@@ -12,6 +12,7 @@ test/
 dist/
 build/
 notes/
+docs/
 
 .DS_Store
 *.log

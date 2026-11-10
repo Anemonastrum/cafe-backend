@@ -4,7 +4,7 @@ Backend for a cafe point-of-sale (POS) system, built with Node.js and Express 5 
 
 ## Current status
 
-Minimal API with JSON request parsing and one status endpoint. Prisma schema and initial MySQL migration cover users, catalog, shifts, orders, payments, receipts, and audit logs. Application authentication, POS endpoints, and runtime database integration are not implemented yet; no Prisma Client is configured.
+P01 foundation: testable Express app, validated environment, request/error envelopes, public liveness, protected DB readiness, Prisma Client with MariaDB adapter, native test harness and transaction helpers. Authentication and POS business endpoints are not implemented yet. Initial migration covers users, catalog, shifts, orders, payments, receipts and audit logs. Runtime verified against MariaDB 12.3.3; MySQL 8.0.16+ remains the schema target, not a claim of MySQL runtime testing.
 
 ## Requirements
 
@@ -18,10 +18,12 @@ Minimal API with JSON request parsing and one status endpoint. Prisma schema and
 git clone https://github.com/Anemonastrum/cafe-backend
 cd cafe-backend
 npm ci
-node src/server.js
+npm run db:generate
+# Configure private .env using .env.example; generate two independent secrets.
+node --env-file=.env src/server.js
 ```
 
-Server uses port `3000` by default. Override it with `PORT`:
+Server requires DATABASE_URL, ALLOWED_ORIGIN (exact origin), CSRF_KEY and READINESS_SECRET (at least 32 bytes each). No built-in secrets. Cookie security defaults on; ALLOW_INSECURE_COOKIE=true is rejected in production. URL query options are rejected rather than silently discarding TLS settings; TLS connection configuration needs explicit support before a deployment requiring it. Bind defaults to 127.0.0.1 and port 3000. Override PORT with:
 
 ```bash
 PORT=8080 node src/server.js
@@ -38,7 +40,7 @@ npm run db:validate
 npm run db:check
 ```
 
-`db:check` compares Prisma-generated DDL against the committed migration, checking columns, types, defaults, nullability, indexes, and relations. If local `notes/db.sql` exists, it also compares the complete source SQL with the migration, allowing only removal of `CREATE DATABASE`/`USE` and explicit table charset/collation. `npm run db:format` formats the schema.
+`db:check` compares the frozen `tests/fixtures/initial-schema.prisma` against the initial migration, checking columns, types, defaults, nullability, indexes, and relations. `npm run db:drift` separately checks the current schema against the authorized test DB using private `.env.test`. If local `notes/db.sql` exists, it also compares the complete source SQL with the migration, allowing only removal of `CREATE DATABASE`/`USE` and explicit table charset/collation. `npm run db:format` formats the schema.
 
 ### Deploy to a new database
 
@@ -72,6 +74,14 @@ SQL comments retain application transaction rules (authorization, row locking, i
 
 ## API
 
+### Foundation routes
+
+- `GET /api/v1/health`: public liveness; does not check DB.
+- `GET /api/v1/ready`: requires `X-Readiness-Key` matching READINESS_SECRET; returns 200 after DB query, 503 if unavailable, 403 without valid internal credential. Restrict at reverse proxy too.
+- Errors return `{error:{code,message,details},request_id}`. Unknown failures never expose DB URLs, parser bodies or stack traces.
+- All responses carry server-generated X-Request-ID; JSON limit 1 MiB.
+- SIGINT/SIGTERM drains HTTP, disconnects Prisma; bounded shutdown deadline.
+
 ### `GET /`
 
 ```bash
@@ -97,7 +107,19 @@ Response (`200 OK`):
 
 ## Tests
 
-Database contract checks run with `npm run db:validate && npm run db:check`. No application test suite is configured: `npm test` still prints `Error: no test specified` and exits with status `1`. Use the API request above for a manual smoke check.
+```sh
+npm test                  # offline unit + mounted HTTP tests
+npm run test:integration  # live DB, actual server process and shutdown
+npm run test:concurrency  # ordered two-connection isolation check
+npm run test:all          # all suites, missing configuration fails
+npm run db:validate
+npm run db:check          # immutable initial schema parity
+npm run db:drift          # current live Prisma-representable schema
+```
+
+Live suites require owner-only `.env.test` (mode 0600) with TEST_DATABASE_URL and TEST_DATABASE_TARGET. Target identity must match the explicitly authorized development database; the harness currently restricts this to `10.10.10.9:3306/app`. Never use a production database. Tests do not migrate/reset/drop databases; fixture writes roll back or remove only their own rows. A fresh target needs explicit migration deployment before tests. Missing configuration is an error, not a skipped success.
+
+The initial migration has been applied to the supplied development target. Do not reset or re-baseline it. Use a restricted DB account for deployment; never ship root credentials.
 
 ## License
 

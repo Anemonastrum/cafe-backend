@@ -11,6 +11,7 @@ pnpm-debug.log*
 test/
 dist/
 build/
+storage/
 notes/
 docs/
 

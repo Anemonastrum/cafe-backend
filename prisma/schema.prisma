@@ -1,5 +1,7 @@
 // Source: notes/db.sql (MySQL 8.0.16+). SQL-only constraints and timestamp updates live in migrations.
-// No client generator yet: application DB integration is outside this schema-only change.
+generator client {
+  provider = "prisma-client-js"
+}
 datasource db {
   provider = "mysql"
 }

@@ -18,13 +18,21 @@
     "node": "^20.19 || ^22.12 || >=24.0"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node scripts/test.mjs unit",
+    "test:integration": "node scripts/test.mjs integration",
+    "test:concurrency": "node scripts/test.mjs concurrency",
+    "test:all": "npm test && npm run test:integration && npm run test:concurrency",
+    "start": "node src/server.js",
+    "db:generate": "prisma generate",
+    "db:drift": "node scripts/check-database.mjs",
     "db:format": "prisma format",
     "db:validate": "prisma validate",
     "db:check": "node scripts/check-schema.mjs",
     "db:deploy": "prisma migrate deploy"
   },
   "dependencies": {
+    "@prisma/adapter-mariadb": "7.10.1",
+    "@prisma/client": "7.10.1",
     "express": "^5.3.0"
   },
   "devDependencies": {

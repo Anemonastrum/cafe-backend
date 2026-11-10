@@ -8,7 +8,8 @@ const migrationPath = 'prisma/migrations/20261109000000_initial/migration.sql';
 assert.ok(existsSync('prisma/schema.prisma'), 'Prisma schema must exist');
 assert.ok(existsSync(migrationPath), 'Initial migration must exist');
 const migration = readFileSync(migrationPath, 'utf8');
-const schema = readFileSync('prisma/schema.prisma', 'utf8');
+const baselineSchema = 'tests/fixtures/initial-schema.prisma';
+const schema = readFileSync(baselineSchema, 'utf8');
 const uncomment = text => text.replace(/^\s*--.*$/gm, '');
 const normalize = text => text.replace(/`/g, '').replace(/\s+/g, '').toLowerCase();
 const tables = text => new Map([...uncomment(text).matchAll(/CREATE TABLE\s+`?(\w+)`?\s*\(([\s\S]*?)\)\s*(?:ENGINE|DEFAULT CHARACTER SET)/g)].map(([, name, body]) => [name, body]));
@@ -23,7 +24,7 @@ assert.equal([...migration.matchAll(/ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4
 assert.equal([...migration.matchAll(/^INSERT INTO /gm)].length, 3);
 
 // ponytail: parser covers this migration's DDL, not arbitrary SQL; use DB introspection if syntax grows.
-const generated = execFileSync('node_modules/.bin/prisma', ['migrate', 'diff', '--from-empty', '--to-schema', 'prisma/schema.prisma', '--script'], { encoding: 'utf8' });
+const generated = execFileSync('node_modules/.bin/prisma', ['migrate', 'diff', '--from-empty', '--to-schema', baselineSchema, '--script'], { encoding: 'utf8' });
 const generatedTables = tables(generated);
 assert.deepEqual([...generatedTables.keys()].sort(), [...sourceTables.keys()].sort());
 const columns = body => new Map(body.split('\n').map(line => line.trim().replace(/,$/, '')).filter(line => /^`?\w+`?\s+(?:BIGINT|TINYINT|SMALLINT|INT|VARCHAR|CHAR|TEXT|DATETIME|DECIMAL|ENUM|JSON)\b/i.test(line)).map(line => {

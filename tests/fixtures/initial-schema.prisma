@@ -1,0 +1,641 @@
+// Source: notes/db.sql (MySQL 8.0.16+). SQL-only constraints and timestamp updates live in migrations.
+// No client generator yet: application DB integration is outside this schema-only change.
+datasource db {
+  provider = "mysql"
+}
+
+enum users_role {
+  admin
+  cashier
+}
+
+enum service_charges_calculation {
+  percent
+  fixed
+}
+
+enum discounts_calculation {
+  percent
+  fixed
+}
+
+enum payment_methods_provider {
+  manual
+  midtrans
+}
+
+enum cafe_settings_receipt_paper_mm {
+  value_58 @map("58")
+  value_80 @map("80")
+}
+
+enum cashier_shifts_status {
+  open
+  closed
+}
+
+enum orders_order_type {
+  dine_in
+  takeaway
+}
+
+enum orders_status {
+  pending
+  preparing
+  ready
+  completed
+  cancelled
+}
+
+enum orders_payment_status {
+  pending
+  paid
+  failed
+}
+
+enum order_discounts_calculation {
+  percent
+  fixed
+}
+
+enum order_service_charges_calculation {
+  percent
+  fixed
+}
+
+enum order_status_history_from_status {
+  pending
+  preparing
+  ready
+  completed
+  cancelled
+}
+
+enum order_status_history_to_status {
+  pending
+  preparing
+  ready
+  completed
+  cancelled
+}
+
+enum payments_status {
+  pending
+  paid
+  failed
+}
+
+enum payments_provider {
+  manual
+  midtrans
+}
+
+enum receipts_paper_mm {
+  value_58 @map("58")
+  value_80 @map("80")
+}
+
+enum receipts_delivery_status {
+  not_requested
+  pending
+  sent
+  failed
+}
+
+enum receipt_events_action {
+  print
+  reprint
+  pdf_export
+  email_sent
+  email_failed
+}
+
+model users {
+  id                              BigInt                 @id @default(autoincrement()) @db.UnsignedBigInt
+  full_name                       String                 @db.VarChar(150)
+  username                        String                 @db.VarChar(60)
+  email                           String?                @db.VarChar(190)
+  password_hash                   String                 @db.VarChar(255)
+  role                            users_role             @default(cashier)
+  is_active                       Boolean                @default(true)
+  last_login_at                   DateTime?              @db.DateTime(3)
+  created_at                      DateTime               @default(now()) @db.DateTime(3)
+  /// Database-managed ON UPDATE CURRENT_TIMESTAMP(3); retained in migration SQL.
+  updated_at                      DateTime               @default(now()) @db.DateTime(3)
+  fk_sessions_user_back           auth_sessions[]        @relation("fk_sessions_user")
+  fk_shifts_cashier_back          cashier_shifts[]       @relation("fk_shifts_cashier")
+  fk_shifts_closed_by_back        cashier_shifts[]       @relation("fk_shifts_closed_by")
+  fk_orders_cashier_back          orders[]               @relation("fk_orders_cashier")
+  fk_orders_cancelled_by_back     orders[]               @relation("fk_orders_cancelled_by")
+  fk_orders_cancel_approved_back  orders[]               @relation("fk_orders_cancel_approved")
+  fk_order_discount_applied_back  order_discounts[]      @relation("fk_order_discount_applied")
+  fk_order_discount_approved_back order_discounts[]      @relation("fk_order_discount_approved")
+  fk_order_history_user_back      order_status_history[] @relation("fk_order_history_user")
+  fk_payments_user_back           payments[]             @relation("fk_payments_user")
+  fk_receipts_user_back           receipts[]             @relation("fk_receipts_user")
+  fk_receipt_event_user_back      receipt_events[]       @relation("fk_receipt_event_user")
+  fk_audit_user_back              audit_logs[]           @relation("fk_audit_user")
+
+  @@unique([username], map: "uq_users_username")
+  @@unique([email], map: "uq_users_email")
+  @@index([role, is_active], map: "idx_users_role_active")
+}
+
+model auth_sessions {
+  id               String    @id @db.Char(36)
+  user_id          BigInt    @db.UnsignedBigInt
+  token_hash       String    @db.Char(64)
+  ip_address       String?   @db.VarChar(45)
+  user_agent       String?   @db.VarChar(512)
+  expires_at       DateTime  @db.DateTime(3)
+  revoked_at       DateTime? @db.DateTime(3)
+  created_at       DateTime  @default(now()) @db.DateTime(3)
+  fk_sessions_user users     @relation("fk_sessions_user", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "fk_sessions_user")
+
+  @@unique([token_hash], map: "uq_auth_sessions_token")
+  @@index([user_id, expires_at], map: "idx_sessions_user_expiry")
+}
+
+model categories {
+  id                        BigInt     @id @default(autoincrement()) @db.UnsignedBigInt
+  name                      String     @db.VarChar(120)
+  description               String?    @db.Text
+  is_active                 Boolean    @default(true)
+  sort_order                Int        @default(0)
+  created_at                DateTime   @default(now()) @db.DateTime(3)
+  /// Database-managed ON UPDATE CURRENT_TIMESTAMP(3); retained in migration SQL.
+  updated_at                DateTime   @default(now()) @db.DateTime(3)
+  fk_products_category_back products[] @relation("fk_products_category")
+
+  @@unique([name], map: "uq_categories_name")
+}
+
+/// SQL CHECK constraints: chk_taxes_rate.
+model taxes {
+  id                     BigInt          @id @default(autoincrement()) @db.UnsignedBigInt
+  name                   String          @db.VarChar(100)
+  rate_percent           Decimal         @default(0) @db.Decimal(7, 4)
+  is_inclusive           Boolean         @default(false)
+  is_active              Boolean         @default(true)
+  created_at             DateTime        @default(now()) @db.DateTime(3)
+  /// Database-managed ON UPDATE CURRENT_TIMESTAMP(3); retained in migration SQL.
+  updated_at             DateTime        @default(now()) @db.DateTime(3)
+  fk_settings_tax_back   cafe_settings[] @relation("fk_settings_tax")
+  fk_products_tax_back   products[]      @relation("fk_products_tax")
+  fk_order_tax_rule_back order_taxes[]   @relation("fk_order_tax_rule")
+
+  @@unique([name], map: "uq_taxes_name")
+}
+
+/// SQL CHECK constraints: chk_service_charges_value.
+model service_charges {
+  id                        BigInt                      @id @default(autoincrement()) @db.UnsignedBigInt
+  name                      String                      @db.VarChar(100)
+  calculation               service_charges_calculation @default(percent)
+  value                     Decimal                     @default(0) @db.Decimal(14, 2)
+  is_auto_applied           Boolean                     @default(true)
+  is_active                 Boolean                     @default(true)
+  created_at                DateTime                    @default(now()) @db.DateTime(3)
+  /// Database-managed ON UPDATE CURRENT_TIMESTAMP(3); retained in migration SQL.
+  updated_at                DateTime                    @default(now()) @db.DateTime(3)
+  fk_order_charge_rule_back order_service_charges[]     @relation("fk_order_charge_rule")
+
+  @@unique([name], map: "uq_service_charges_name")
+}
+
+/// SQL CHECK constraints: chk_discounts_value, chk_discounts_dates.
+model discounts {
+  id                          BigInt                @id @default(autoincrement()) @db.UnsignedBigInt
+  name                        String                @db.VarChar(120)
+  code                        String?               @db.VarChar(60)
+  calculation                 discounts_calculation
+  value                       Decimal               @db.Decimal(14, 2)
+  starts_at                   DateTime?             @db.DateTime(3)
+  ends_at                     DateTime?             @db.DateTime(3)
+  is_active                   Boolean               @default(true)
+  created_at                  DateTime              @default(now()) @db.DateTime(3)
+  /// Database-managed ON UPDATE CURRENT_TIMESTAMP(3); retained in migration SQL.
+  updated_at                  DateTime              @default(now()) @db.DateTime(3)
+  fk_order_discount_rule_back order_discounts[]     @relation("fk_order_discount_rule")
+
+  @@unique([code], map: "uq_discounts_code")
+}
+
+model payment_methods {
+  id                      BigInt                   @id @default(autoincrement()) @db.UnsignedBigInt
+  code                    String                   @db.VarChar(30)
+  name                    String                   @db.VarChar(80)
+  provider                payment_methods_provider @default(manual)
+  is_enabled              Boolean                  @default(true)
+  created_at              DateTime                 @default(now()) @db.DateTime(3)
+  /// Database-managed ON UPDATE CURRENT_TIMESTAMP(3); retained in migration SQL.
+  updated_at              DateTime                 @default(now()) @db.DateTime(3)
+  fk_payments_method_back payments[]               @relation("fk_payments_method")
+
+  @@unique([code], map: "uq_payment_methods_code")
+}
+
+/// SQL CHECK constraints: chk_single_cafe, chk_next_order_number.
+model cafe_settings {
+  id                   Int                            @id @default(1) @db.UnsignedTinyInt
+  cafe_name            String                         @db.VarChar(180)
+  cafe_address         String?                        @db.Text
+  phone                String?                        @db.VarChar(50)
+  email                String?                        @db.VarChar(190)
+  logo_url             String?                        @db.VarChar(1024)
+  currency             String                         @default("IDR") @db.Char(3)
+  timezone             String                         @default("Asia/Jakarta") @db.VarChar(64)
+  default_tax_id       BigInt?                        @db.UnsignedBigInt
+  receipt_footer       String?                        @db.VarChar(500)
+  receipt_paper_mm     cafe_settings_receipt_paper_mm @default(value_80)
+  order_prefix         String                         @default("ORD") @db.VarChar(15)
+  next_order_number    BigInt                         @default(1) @db.UnsignedBigInt
+  cashier_can_discount Boolean                        @default(false)
+  cashier_can_cancel   Boolean                        @default(false)
+  created_at           DateTime                       @default(now()) @db.DateTime(3)
+  /// Database-managed ON UPDATE CURRENT_TIMESTAMP(3); retained in migration SQL.
+  updated_at           DateTime                       @default(now()) @db.DateTime(3)
+  fk_settings_tax      taxes?                         @relation("fk_settings_tax", fields: [default_tax_id], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "fk_settings_tax")
+}
+
+/// SQL CHECK constraints: chk_products_base_price, chk_products_promo_price.
+model products {
+  id                            BigInt                   @id @default(autoincrement()) @db.UnsignedBigInt
+  category_id                   BigInt                   @db.UnsignedBigInt
+  tax_id                        BigInt?                  @db.UnsignedBigInt
+  name                          String                   @db.VarChar(180)
+  sku                           String?                  @db.VarChar(64)
+  description                   String?                  @db.Text
+  image_url                     String?                  @db.VarChar(1024)
+  base_price                    Decimal                  @db.Decimal(14, 2)
+  promo_price                   Decimal?                 @db.Decimal(14, 2)
+  promo_starts_at               DateTime?                @db.DateTime(3)
+  promo_ends_at                 DateTime?                @db.DateTime(3)
+  is_enabled                    Boolean                  @default(true)
+  archived_at                   DateTime?                @db.DateTime(3)
+  sort_order                    Int                      @default(0)
+  created_at                    DateTime                 @default(now()) @db.DateTime(3)
+  /// Database-managed ON UPDATE CURRENT_TIMESTAMP(3); retained in migration SQL.
+  updated_at                    DateTime                 @default(now()) @db.DateTime(3)
+  fk_products_category          categories               @relation("fk_products_category", fields: [category_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_products_category")
+  fk_products_tax               taxes?                   @relation("fk_products_tax", fields: [tax_id], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "fk_products_tax")
+  fk_variant_group_product_back product_variant_groups[] @relation("fk_variant_group_product")
+  fk_addon_group_product_back   product_addon_groups[]   @relation("fk_addon_group_product")
+  fk_order_items_product_back   order_items[]            @relation("fk_order_items_product")
+
+  @@unique([sku], map: "uq_products_sku")
+  @@index([is_enabled, archived_at, category_id], map: "idx_products_visible")
+  @@index([name], map: "idx_products_name")
+}
+
+model product_variant_groups {
+  id                           BigInt                    @id @default(autoincrement()) @db.UnsignedBigInt
+  product_id                   BigInt                    @db.UnsignedBigInt
+  name                         String                    @db.VarChar(120)
+  is_required                  Boolean                   @default(true)
+  sort_order                   Int                       @default(0)
+  fk_variant_group_product     products                  @relation("fk_variant_group_product", fields: [product_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_variant_group_product")
+  fk_variant_option_group_back product_variant_options[] @relation("fk_variant_option_group")
+
+  @@unique([product_id, name], map: "uq_variant_group_name")
+}
+
+model product_variant_options {
+  id                          BigInt                 @id @default(autoincrement()) @db.UnsignedBigInt
+  group_id                    BigInt                 @db.UnsignedBigInt
+  name                        String                 @db.VarChar(120)
+  price_delta                 Decimal                @default(0) @db.Decimal(14, 2)
+  is_enabled                  Boolean                @default(true)
+  sort_order                  Int                    @default(0)
+  fk_variant_option_group     product_variant_groups @relation("fk_variant_option_group", fields: [group_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_variant_option_group")
+  fk_item_variant_option_back order_item_variants[]  @relation("fk_item_variant_option")
+
+  @@unique([group_id, name], map: "uq_variant_option_name")
+}
+
+/// SQL CHECK constraints: chk_addon_group_selection.
+model product_addon_groups {
+  id                         BigInt                  @id @default(autoincrement()) @db.UnsignedBigInt
+  product_id                 BigInt                  @db.UnsignedBigInt
+  name                       String                  @db.VarChar(120)
+  min_select                 Int                     @default(0) @db.UnsignedSmallInt
+  max_select                 Int                     @default(10) @db.UnsignedSmallInt
+  sort_order                 Int                     @default(0)
+  fk_addon_group_product     products                @relation("fk_addon_group_product", fields: [product_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_addon_group_product")
+  fk_addon_option_group_back product_addon_options[] @relation("fk_addon_option_group")
+
+  @@unique([product_id, name], map: "uq_addon_group_name")
+}
+
+/// SQL CHECK constraints: chk_addon_option_price.
+model product_addon_options {
+  id                        BigInt               @id @default(autoincrement()) @db.UnsignedBigInt
+  group_id                  BigInt               @db.UnsignedBigInt
+  name                      String               @db.VarChar(120)
+  price                     Decimal              @default(0) @db.Decimal(14, 2)
+  is_enabled                Boolean              @default(true)
+  sort_order                Int                  @default(0)
+  fk_addon_option_group     product_addon_groups @relation("fk_addon_option_group", fields: [group_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_addon_option_group")
+  fk_item_addon_option_back order_item_addons[]  @relation("fk_item_addon_option")
+
+  @@unique([group_id, name], map: "uq_addon_option_name")
+}
+
+model cash_registers {
+  id                      BigInt           @id @default(autoincrement()) @db.UnsignedBigInt
+  name                    String           @db.VarChar(100)
+  code                    String           @db.VarChar(40)
+  is_active               Boolean          @default(true)
+  fk_shifts_register_back cashier_shifts[] @relation("fk_shifts_register")
+
+  @@unique([code], map: "uq_cash_register_code")
+}
+
+model cashier_shifts {
+  id                     BigInt                @id @default(autoincrement()) @db.UnsignedBigInt
+  cashier_id             BigInt                @db.UnsignedBigInt
+  cash_register_id       BigInt                @db.UnsignedBigInt
+  opened_at              DateTime              @default(now()) @db.DateTime(3)
+  status                 cashier_shifts_status @default(open)
+  closed_at              DateTime?             @db.DateTime(3)
+  closed_by_user_id      BigInt?               @db.UnsignedBigInt
+  closing_notes          String?               @db.Text
+  fk_shifts_cashier      users                 @relation("fk_shifts_cashier", fields: [cashier_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_shifts_cashier")
+  fk_shifts_register     cash_registers        @relation("fk_shifts_register", fields: [cash_register_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_shifts_register")
+  fk_shifts_closed_by    users?                @relation("fk_shifts_closed_by", fields: [closed_by_user_id], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "fk_shifts_closed_by")
+  fk_orders_shift_back   orders[]              @relation("fk_orders_shift")
+  fk_payments_shift_back payments[]            @relation("fk_payments_shift")
+
+  @@index([cashier_id, opened_at], map: "idx_shifts_cashier_time")
+  @@index([cash_register_id, status], map: "idx_shifts_register_status")
+}
+
+/// SQL CHECK constraints: chk_orders_totals.
+model orders {
+  id                           BigInt                  @id @default(autoincrement()) @db.UnsignedBigInt
+  order_number                 String                  @db.VarChar(48)
+  client_request_id            String                  @db.Char(36)
+  cashier_id                   BigInt                  @db.UnsignedBigInt
+  shift_id                     BigInt?                 @db.UnsignedBigInt
+  order_type                   orders_order_type
+  status                       orders_status           @default(pending)
+  is_held                      Boolean                 @default(false)
+  payment_status               orders_payment_status   @default(pending)
+  notes                        String?                 @db.Text
+  subtotal                     Decimal                 @default(0) @db.Decimal(14, 2)
+  item_discount_total          Decimal                 @default(0) @db.Decimal(14, 2)
+  order_discount_total         Decimal                 @default(0) @db.Decimal(14, 2)
+  tax_total                    Decimal                 @default(0) @db.Decimal(14, 2)
+  service_charge_total         Decimal                 @default(0) @db.Decimal(14, 2)
+  grand_total                  Decimal                 @default(0) @db.Decimal(14, 2)
+  paid_at                      DateTime?               @db.DateTime(3)
+  completed_at                 DateTime?               @db.DateTime(3)
+  cancelled_at                 DateTime?               @db.DateTime(3)
+  cancel_reason                String?                 @db.VarChar(500)
+  cancelled_by_user_id         BigInt?                 @db.UnsignedBigInt
+  cancel_approved_by_user_id   BigInt?                 @db.UnsignedBigInt
+  created_at                   DateTime                @default(now()) @db.DateTime(3)
+  /// Database-managed ON UPDATE CURRENT_TIMESTAMP(3); retained in migration SQL.
+  updated_at                   DateTime                @default(now()) @db.DateTime(3)
+  fk_orders_cashier            users                   @relation("fk_orders_cashier", fields: [cashier_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_orders_cashier")
+  fk_orders_shift              cashier_shifts?         @relation("fk_orders_shift", fields: [shift_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_orders_shift")
+  fk_orders_cancelled_by       users?                  @relation("fk_orders_cancelled_by", fields: [cancelled_by_user_id], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "fk_orders_cancelled_by")
+  fk_orders_cancel_approved    users?                  @relation("fk_orders_cancel_approved", fields: [cancel_approved_by_user_id], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "fk_orders_cancel_approved")
+  fk_order_items_order_back    order_items[]           @relation("fk_order_items_order")
+  fk_order_discount_order_back order_discounts[]       @relation("fk_order_discount_order")
+  fk_order_tax_order_back      order_taxes[]           @relation("fk_order_tax_order")
+  fk_order_charge_order_back   order_service_charges[] @relation("fk_order_charge_order")
+  fk_order_history_order_back  order_status_history[]  @relation("fk_order_history_order")
+  fk_payments_order_back       payments[]              @relation("fk_payments_order")
+
+  @@unique([order_number], map: "uq_orders_number")
+  @@unique([client_request_id], map: "uq_orders_request")
+  @@index([created_at], map: "idx_orders_created")
+  @@index([status, created_at], map: "idx_orders_status_created")
+  @@index([cashier_id, created_at], map: "idx_orders_cashier_created")
+  @@index([shift_id], map: "idx_orders_shift")
+  @@index([payment_status, paid_at], map: "idx_orders_payment_status")
+}
+
+/// SQL CHECK constraints: chk_order_item_qty, chk_order_item_amounts.
+model order_items {
+  id                        BigInt                @id @default(autoincrement()) @db.UnsignedBigInt
+  order_id                  BigInt                @db.UnsignedBigInt
+  product_id                BigInt                @db.UnsignedBigInt
+  product_name              String                @db.VarChar(180)
+  sku_snapshot              String?               @db.VarChar(64)
+  category_name             String                @db.VarChar(120)
+  quantity                  Int                   @db.UnsignedInt
+  base_unit_price           Decimal               @db.Decimal(14, 2)
+  variant_unit_total        Decimal               @default(0) @db.Decimal(14, 2)
+  addon_unit_total          Decimal               @default(0) @db.Decimal(14, 2)
+  line_subtotal             Decimal               @db.Decimal(14, 2)
+  discount_total            Decimal               @default(0) @db.Decimal(14, 2)
+  tax_total                 Decimal               @default(0) @db.Decimal(14, 2)
+  line_total                Decimal               @db.Decimal(14, 2)
+  special_instructions      String?               @db.Text
+  created_at                DateTime              @default(now()) @db.DateTime(3)
+  fk_order_items_order      orders                @relation("fk_order_items_order", fields: [order_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_order_items_order")
+  fk_order_items_product    products              @relation("fk_order_items_product", fields: [product_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_order_items_product")
+  fk_item_variant_item_back order_item_variants[] @relation("fk_item_variant_item")
+  fk_item_addon_item_back   order_item_addons[]   @relation("fk_item_addon_item")
+
+  @@index([order_id], map: "idx_order_items_order")
+  @@index([product_id], map: "idx_order_items_product")
+}
+
+model order_item_variants {
+  id                     BigInt                  @id @default(autoincrement()) @db.UnsignedBigInt
+  order_item_id          BigInt                  @db.UnsignedBigInt
+  variant_option_id      BigInt                  @db.UnsignedBigInt
+  group_name             String                  @db.VarChar(120)
+  option_name            String                  @db.VarChar(120)
+  price_delta            Decimal                 @default(0) @db.Decimal(14, 2)
+  fk_item_variant_item   order_items             @relation("fk_item_variant_item", fields: [order_item_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_item_variant_item")
+  fk_item_variant_option product_variant_options @relation("fk_item_variant_option", fields: [variant_option_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_item_variant_option")
+
+  @@unique([order_item_id, variant_option_id], map: "uq_item_variant_option")
+}
+
+/// SQL CHECK constraints: chk_item_addon_qty, chk_item_addon_amounts.
+model order_item_addons {
+  id                   BigInt                @id @default(autoincrement()) @db.UnsignedBigInt
+  order_item_id        BigInt                @db.UnsignedBigInt
+  addon_option_id      BigInt                @db.UnsignedBigInt
+  group_name           String                @db.VarChar(120)
+  option_name          String                @db.VarChar(120)
+  quantity             Int                   @default(1) @db.UnsignedInt
+  unit_price           Decimal               @db.Decimal(14, 2)
+  line_total           Decimal               @db.Decimal(14, 2)
+  fk_item_addon_item   order_items           @relation("fk_item_addon_item", fields: [order_item_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_item_addon_item")
+  fk_item_addon_option product_addon_options @relation("fk_item_addon_option", fields: [addon_option_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_item_addon_option")
+
+  @@unique([order_item_id, addon_option_id], map: "uq_item_addon_option")
+}
+
+/// SQL CHECK constraints: chk_order_discounts_amount.
+model order_discounts {
+  id                         BigInt                      @id @default(autoincrement()) @db.UnsignedBigInt
+  order_id                   BigInt                      @db.UnsignedBigInt
+  discount_id                BigInt?                     @db.UnsignedBigInt
+  name                       String                      @db.VarChar(120)
+  calculation                order_discounts_calculation
+  configured_value           Decimal                     @db.Decimal(14, 2)
+  amount                     Decimal                     @db.Decimal(14, 2)
+  applied_by_user_id         BigInt                      @db.UnsignedBigInt
+  approved_by_user_id        BigInt?                     @db.UnsignedBigInt
+  created_at                 DateTime                    @default(now()) @db.DateTime(3)
+  fk_order_discount_order    orders                      @relation("fk_order_discount_order", fields: [order_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_order_discount_order")
+  fk_order_discount_rule     discounts?                  @relation("fk_order_discount_rule", fields: [discount_id], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "fk_order_discount_rule")
+  fk_order_discount_applied  users                       @relation("fk_order_discount_applied", fields: [applied_by_user_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_order_discount_applied")
+  fk_order_discount_approved users?                      @relation("fk_order_discount_approved", fields: [approved_by_user_id], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "fk_order_discount_approved")
+
+  @@index([order_id], map: "idx_order_discounts_order")
+}
+
+/// SQL CHECK constraints: chk_order_taxes_amount.
+model order_taxes {
+  id                 BigInt  @id @default(autoincrement()) @db.UnsignedBigInt
+  order_id           BigInt  @db.UnsignedBigInt
+  tax_id             BigInt? @db.UnsignedBigInt
+  name               String  @db.VarChar(100)
+  rate_percent       Decimal @db.Decimal(7, 4)
+  is_inclusive       Boolean
+  taxable_amount     Decimal @db.Decimal(14, 2)
+  tax_amount         Decimal @db.Decimal(14, 2)
+  fk_order_tax_order orders  @relation("fk_order_tax_order", fields: [order_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_order_tax_order")
+  fk_order_tax_rule  taxes?  @relation("fk_order_tax_rule", fields: [tax_id], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "fk_order_tax_rule")
+
+  @@index([order_id], map: "idx_order_taxes_order")
+}
+
+/// SQL CHECK constraints: chk_order_charges_amount.
+model order_service_charges {
+  id                    BigInt                            @id @default(autoincrement()) @db.UnsignedBigInt
+  order_id              BigInt                            @db.UnsignedBigInt
+  service_charge_id     BigInt?                           @db.UnsignedBigInt
+  name                  String                            @db.VarChar(100)
+  calculation           order_service_charges_calculation
+  configured_value      Decimal                           @db.Decimal(14, 2)
+  amount                Decimal                           @db.Decimal(14, 2)
+  fk_order_charge_order orders                            @relation("fk_order_charge_order", fields: [order_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_order_charge_order")
+  fk_order_charge_rule  service_charges?                  @relation("fk_order_charge_rule", fields: [service_charge_id], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "fk_order_charge_rule")
+
+  @@index([order_id], map: "idx_order_charges_order")
+}
+
+model order_status_history {
+  id                     BigInt                            @id @default(autoincrement()) @db.UnsignedBigInt
+  order_id               BigInt                            @db.UnsignedBigInt
+  from_status            order_status_history_from_status?
+  to_status              order_status_history_to_status
+  changed_by_user_id     BigInt                            @db.UnsignedBigInt
+  notes                  String?                           @db.VarChar(500)
+  changed_at             DateTime                          @default(now()) @db.DateTime(3)
+  fk_order_history_order orders                            @relation("fk_order_history_order", fields: [order_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_order_history_order")
+  fk_order_history_user  users                             @relation("fk_order_history_user", fields: [changed_by_user_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_order_history_user")
+
+  @@index([order_id, changed_at], map: "idx_status_history_order")
+}
+
+/// SQL CHECK constraints: chk_payments_amount, chk_payments_cash.
+model payments {
+  id                            BigInt            @id @default(autoincrement()) @db.UnsignedBigInt
+  order_id                      BigInt            @db.UnsignedBigInt
+  shift_id                      BigInt?           @db.UnsignedBigInt
+  payment_method_id             BigInt            @db.UnsignedBigInt
+  payment_reference             String            @db.VarChar(80)
+  idempotency_key               String            @db.VarChar(120)
+  amount                        Decimal           @db.Decimal(14, 2)
+  cash_received                 Decimal?          @db.Decimal(14, 2)
+  cash_change                   Decimal?          @db.Decimal(14, 2)
+  status                        payments_status   @default(pending)
+  provider                      payments_provider @default(manual)
+  gateway_order_id              String?           @db.VarChar(120)
+  gateway_transaction_id        String?           @db.VarChar(120)
+  gateway_status                String?           @db.VarChar(80)
+  processed_by_user_id          BigInt            @db.UnsignedBigInt
+  paid_at                       DateTime?         @db.DateTime(3)
+  failed_at                     DateTime?         @db.DateTime(3)
+  created_at                    DateTime          @default(now()) @db.DateTime(3)
+  /// Database-managed ON UPDATE CURRENT_TIMESTAMP(3); retained in migration SQL.
+  updated_at                    DateTime          @default(now()) @db.DateTime(3)
+  fk_payments_order             orders            @relation("fk_payments_order", fields: [order_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_payments_order")
+  fk_payments_shift             cashier_shifts?   @relation("fk_payments_shift", fields: [shift_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_payments_shift")
+  fk_payments_method            payment_methods   @relation("fk_payments_method", fields: [payment_method_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_payments_method")
+  fk_payments_user              users             @relation("fk_payments_user", fields: [processed_by_user_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_payments_user")
+  fk_payment_event_payment_back payment_events[]  @relation("fk_payment_event_payment")
+  fk_receipts_payment_back      receipts?         @relation("fk_receipts_payment")
+
+  @@unique([payment_reference], map: "uq_payments_reference")
+  @@unique([idempotency_key], map: "uq_payments_idempotency")
+  @@unique([gateway_order_id], map: "uq_payments_gateway_order")
+  @@unique([gateway_transaction_id], map: "uq_payments_gateway_transaction")
+  @@index([order_id, status], map: "idx_payments_order_status")
+  @@index([payment_method_id, paid_at], map: "idx_payments_method_paid")
+  @@index([shift_id], map: "idx_payments_shift")
+}
+
+model payment_events {
+  id                       BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  payment_id               BigInt   @db.UnsignedBigInt
+  provider_event_id        String?  @db.VarChar(150)
+  event_type               String   @db.VarChar(80)
+  payload                  Json?
+  received_at              DateTime @default(now()) @db.DateTime(3)
+  fk_payment_event_payment payments @relation("fk_payment_event_payment", fields: [payment_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_payment_event_payment")
+
+  @@unique([provider_event_id], map: "uq_payment_events_provider_id")
+  @@index([payment_id, received_at], map: "idx_payment_events_payment_time")
+}
+
+model receipts {
+  id                            BigInt                   @id @default(autoincrement()) @db.UnsignedBigInt
+  payment_id                    BigInt                   @db.UnsignedBigInt
+  receipt_number                String                   @db.VarChar(80)
+  cafe_name_snapshot            String                   @db.VarChar(180)
+  cafe_address_snapshot         String?                  @db.Text
+  cafe_phone_snapshot           String?                  @db.VarChar(50)
+  currency_snapshot             String                   @default("IDR") @db.Char(3)
+  paper_mm                      receipts_paper_mm        @default(value_80)
+  footer_snapshot               String?                  @db.VarChar(500)
+  pdf_url                       String?                  @db.VarChar(1024)
+  digital_delivery_email        String?                  @db.VarChar(190)
+  delivery_status               receipts_delivery_status @default(not_requested)
+  issued_by_user_id             BigInt                   @db.UnsignedBigInt
+  issued_at                     DateTime                 @default(now()) @db.DateTime(3)
+  fk_receipts_payment           payments                 @relation("fk_receipts_payment", fields: [payment_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_receipts_payment")
+  fk_receipts_user              users                    @relation("fk_receipts_user", fields: [issued_by_user_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_receipts_user")
+  fk_receipt_event_receipt_back receipt_events[]         @relation("fk_receipt_event_receipt")
+
+  @@unique([payment_id], map: "uq_receipts_payment")
+  @@unique([receipt_number], map: "uq_receipts_number")
+}
+
+model receipt_events {
+  id                       BigInt                @id @default(autoincrement()) @db.UnsignedBigInt
+  receipt_id               BigInt                @db.UnsignedBigInt
+  action                   receipt_events_action
+  acted_by_user_id         BigInt                @db.UnsignedBigInt
+  created_at               DateTime              @default(now()) @db.DateTime(3)
+  fk_receipt_event_receipt receipts              @relation("fk_receipt_event_receipt", fields: [receipt_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_receipt_event_receipt")
+  fk_receipt_event_user    users                 @relation("fk_receipt_event_user", fields: [acted_by_user_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_receipt_event_user")
+
+  @@index([receipt_id, created_at], map: "idx_receipt_events_receipt_time")
+}
+
+model audit_logs {
+  id            BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  user_id       BigInt?  @db.UnsignedBigInt
+  action        String   @db.VarChar(100)
+  entity_type   String   @db.VarChar(80)
+  entity_id     String?  @db.VarChar(80)
+  before_data   Json?
+  after_data    Json?
+  ip_address    String?  @db.VarChar(45)
+  created_at    DateTime @default(now()) @db.DateTime(3)
+  fk_audit_user users?   @relation("fk_audit_user", fields: [user_id], references: [id], onDelete: SetNull, onUpdate: Restrict, map: "fk_audit_user")
+
+  @@index([user_id, created_at], map: "idx_audit_user_time")
+  @@index([entity_type, entity_id, created_at], map: "idx_audit_entity")
+}

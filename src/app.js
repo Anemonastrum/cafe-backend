@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { apiRoutes } from './routes/index.js';
 import { errorHandler } from './middlewares/error-handler.js';
 import { AppError } from './utils/errors.js';
+import { cors } from './middlewares/csrf.js';
 export function createApp({ db, config, events }) {
   const app = express();
   app.disable('x-powered-by');
@@ -13,6 +14,7 @@ export function createApp({ db, config, events }) {
     res.set('Cache-Control', 'no-store');
     next();
   });
+  app.use(cors(config));
   app.use(express.json({ limit: '1mb' }));
   app.get('/', (req, res) => res.json({ message: 'API is running' }));
   app.use('/api/v1', apiRoutes({ db, config, events }));

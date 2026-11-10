@@ -28,9 +28,14 @@ export async function login(db, { username, password }, context) {
     return { secret, expiresAt, user: safeUser(user) };
   });
 }
-export async function lockedActor(tx, actor) {
+export async function lockedActor(tx, actor, affectedUserIds = []) {
   await lockCafe(tx);
-  const user = await model.lockUser(tx, actor.id);
+  const ids = [...new Set([actor.id, ...affectedUserIds])].sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
+  let user;
+  for (const id of ids) {
+    const locked = await model.lockUser(tx, id);
+    if (id === actor.id) user = locked;
+  }
   const session = await model.lockSession(tx, actor.sessionId);
   if (!user?.is_active || !session || session.user_id !== user.id || session.revoked_at
       || session.expires_at <= new Date() || session.token_hash !== actor.tokenHash) throw unauthorized();

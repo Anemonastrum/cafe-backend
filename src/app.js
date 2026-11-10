@@ -16,6 +16,7 @@ export function createApp({ db, config, events }) {
   });
   app.use(cors(config));
   app.use(express.json({ limit: '1mb' }));
+  if (config.storageDir) app.use('/media', express.static(config.storageDir, { dotfiles: 'deny', index: false, setHeaders: res => res.set('X-Content-Type-Options', 'nosniff') }));
   app.get('/', (req, res) => res.json({ message: 'API is running' }));
   app.use('/api/v1', apiRoutes({ db, config, events }));
   app.use((req, res, next) => next(new AppError(404, 'NOT_FOUND', 'Not found')));

@@ -4,7 +4,7 @@ Backend for a cafe point-of-sale (POS) system, built with Node.js and Express 5 
 
 ## Current status
 
-P01 foundation: testable Express app, validated environment, request/error envelopes, public liveness, protected DB readiness, Prisma Client with MariaDB adapter, native test harness and transaction helpers. P02 adds cookie authentication, session rotation/revocation, CSRF, password change and first-admin bootstrap. POS business endpoints are not implemented yet. Initial migration covers users, catalog, shifts, orders, payments, receipts and audit logs. Runtime verified against MariaDB 12.3.3; MySQL 8.0.16+ remains the schema target, not a claim of MySQL runtime testing.
+P01 foundation: testable Express app, validated environment, request/error envelopes, public liveness, protected DB readiness, Prisma Client with MariaDB adapter, native test harness and transaction helpers. P02 adds cookie authentication, session rotation/revocation, CSRF, password change and first-admin bootstrap. P03 adds employee administration, cafe settings/logo uploads, pricing-rule configuration and payment-method configuration. Catalog, orders, shifts, payments and reporting endpoints remain future phases. Initial migration covers users, catalog, shifts, orders, payments, receipts and audit logs. Runtime verified against MariaDB 12.3.3; MySQL 8.0.16+ remains the schema target, not a claim of MySQL runtime testing.
 
 ## Requirements
 
@@ -91,6 +91,14 @@ SQL comments retain application transaction rules (authorization, row locking, i
 - `PATCH /api/v1/auth/me/password`: current_password/new_password; keeps current session, revokes others.
 
 Every authenticated mutation requires exact Origin plus X-CSRF-Token. Cross-origin browsers must use credentials: include. CORS permits only configured origin. New passwords: 12–128 Unicode characters, at most 512 UTF-8 bytes; never normalized. scrypt uses N=131072/r=8/p=1, about 0.54 seconds per hash on test host, two concurrent jobs plus eight queued (overflow 429). Rate limits: five login failures per 15 minutes per IP and database username identity; 30 auth requests/minute/IP. Stores cap 10000 keys and fail closed. One API process only; shared limiter store required before replicas. Proxy trust remains off until explicit deployment configuration.
+
+### Administration and configuration
+
+Admin-only `/api/v1/admin/users` supports listing/creation and `/:id` detail/update, `/:id/status`, `/:id/reset-password`. Self-demotion/deactivation is rejected; serialized account changes preserve an active admin and revoke sessions on deactivation/password reset. Lists support role, is_active, search and pagination/sorting. Employee history routes remain deferred.
+
+`GET /api/v1/settings/public` requires an active admin/cashier session and excludes permissions/counter/default tax. Admin settings support GET/PATCH plus POST/DELETE logo. Logo uploads use multipart field `file`, PNG/JPEG/WebP only, 5 MiB and 20 megapixels maximum. Decoded images become generated WebP files in STORAGE_DIR, served publicly under `/media`. Keep that directory dedicated to generated images, never credentials. DB failure cleans new image; old-file cleanup failures log a retryable orphan after commit.
+
+Admin taxes, service-charges and discounts support GET/POST/PATCH; updates validate merged values and dates. Tax rate strings retain four decimals, money strings two. Rule lists support is_active/search/pagination. No hard-delete route. Payment methods allow enabling/disabling; provider remains manual until optional Midtrans phase. Cashiers see enabled methods only; admins may request include_disabled=true.
 
 ### First admin bootstrap
 

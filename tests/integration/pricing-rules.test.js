@@ -23,6 +23,10 @@ test('p03-t3 acceptance: merged rule limits, dates, filters and payment invarian
       const id = row.body.data.id; made.push({kind,id:BigInt(id)});
       if(kind==='taxes') {
         assert.equal(row.body.data.rate_percent,'10.1250');
+        assert.equal((await api(path+'/'+id,'PATCH',{rate_percent:'10.1251'})).status,200);
+        const audit = await db.audit_logs.findFirst({where:{user_id:f.adminA.id,entity_id:id,action:'taxes.update'},orderBy:{id:'desc'}});
+        assert.equal(audit.before_data.rate_percent,'10.1250');
+        assert.equal(audit.after_data.rate_percent,'10.1251');
         assert.equal((await api(path+'/'+id,'PATCH',{rate_percent:'100.0001'})).status,422);
         assert.equal((await api(path,'POST',{name:name+'-bad',rate_percent:10})).status,422);
       } else {

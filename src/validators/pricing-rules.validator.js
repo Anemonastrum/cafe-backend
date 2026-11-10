@@ -24,7 +24,11 @@ export function ruleInput(kind) {
       const patch={...body};
       for(const k of ['starts_at','ends_at']) if(body[k]!==undefined&&body[k]!==null) {
         if(typeof body[k]!=='string'||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?(Z|[+-]\d{2}:\d{2})$/.test(body[k])||!Number.isFinite(Date.parse(body[k]))) invalid();
+        const local = body[k].slice(0,19);
+        const calendar = new Date(local + 'Z');
+        if (!Number.isFinite(calendar.getTime()) || calendar.toISOString().slice(0,19) !== local) invalid();
         patch[k]=new Date(body[k]);
+        if (patch[k].getUTCFullYear() < 1000 || patch[k].getUTCFullYear() > 9999) invalid();
       }
       req.input=patch;
       if(req.params.id!==undefined) req.entityId=parseId(req.params.id);

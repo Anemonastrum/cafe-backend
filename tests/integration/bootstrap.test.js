@@ -6,7 +6,16 @@ import { withDatabase, testDatabaseConfig } from '../support/database.js';
 import { verifyPassword } from '../../src/utils/password.js';
 const run = (input, args = []) => new Promise((resolve, reject) => {
   const env = { ...process.env, DATABASE_URL: testDatabaseConfig().databaseUrl }; delete env.NODE_TEST_CONTEXT;
-  const child = spawn(process.execPath, ['scripts/bootstrap-admin.mjs', ...args], { env, stdio: ['pipe', 'pipe', 'pipe'] });
+  // Feed actual CLI distinct chunks with a UTF-8 character split between them.
+  const wrapper = `
+    import { Readable } from 'node:stream';
+    const chunks = []; for await (const chunk of process.stdin) chunks.push(chunk);
+    const bytes = Buffer.concat(chunks), split = bytes.indexOf(Buffer.from('é')) + 1;
+    Object.defineProperty(process, 'stdin', { value: Readable.from([bytes.subarray(0, split), bytes.subarray(split)]) });
+    process.argv = [process.execPath, 'scripts/bootstrap-admin.mjs', ...process.argv.slice(1)];
+    await import('./scripts/bootstrap-admin.mjs');
+  `;
+  const child = spawn(process.execPath, ['--input-type=module', '-e', wrapper, '--', ...args], { env, stdio: ['pipe', 'pipe', 'pipe'] });
   let output = ''; child.stdout.on('data', d => { output += d; }); child.stderr.on('data', d => { output += d; });
   child.on('error', reject); child.on('close', code => resolve({ code, output }));
   child.stdin.on('error', () => {}); child.stdin.end(JSON.stringify(input));
@@ -14,7 +23,7 @@ const run = (input, args = []) => new Promise((resolve, reject) => {
 
 test('bootstrap rejects command-line secrets and concurrent attempts create only one first admin', async () => withDatabase(async db => {
   assert.equal(await db.users.count({ where: { role: 'admin' } }), 0, 'Bootstrap test needs no existing admin; never delete existing accounts');
-  const suffix = randomUUID(), password = 'Bootstrap test password 42!';
+  const suffix = randomUUID(), password = 'Bootstrap testé password 42!';
   const inputs = [0, 1].map(n => ({ username: `bootstrap-${n}-${suffix}`, full_name: 'Bootstrap test', password }));
   try {
     const invalid = await run(inputs[0], ['--password', 'synthetic-not-a-secret']); assert.notEqual(invalid.code, 0);

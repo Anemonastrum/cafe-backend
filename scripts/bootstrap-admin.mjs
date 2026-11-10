@@ -7,6 +7,7 @@ import { appendAudit } from '../src/services/audit.service.js';
 let db;
 try {
   if (process.argv.length !== 2 || process.stdin.isTTY) throw new Error();
+  process.stdin.setEncoding('utf8');
   let input = '';
   for await (const chunk of process.stdin) {
     input += chunk;

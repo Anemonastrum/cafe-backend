@@ -12,5 +12,8 @@ export function authRoutes({ db, config }) {
   router.use(authenticate(db, config), authorize('admin', 'cashier'));
   router.get('/me', validateAuth('empty'), controller.me);
   router.post('/refresh', csrf(config), validateAuth('empty'), controller.refresh);
+  router.post('/logout', csrf(config), validateAuth('empty'), controller.logout);
+  router.post('/logout-all', csrf(config), validateAuth('empty'), controller.logoutAll);
+  router.patch('/me/password', csrf(config), validateAuth('password'), controller.password);
   return router;
 }

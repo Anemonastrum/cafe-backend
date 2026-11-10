@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID, createHash, createHmac } from 'node:crypto';
-import { verifyPassword } from '../utils/password.js';
+import { hashPassword, verifyPassword } from '../utils/password.js';
 import { AppError } from '../utils/errors.js';
 import { withWriteTx } from '../utils/transaction.js';
 import { lockCafe } from '../models/lock.model.js';
@@ -35,6 +35,33 @@ export async function lockedActor(tx, actor) {
   if (!user?.is_active || !session || session.user_id !== user.id || session.revoked_at
       || session.expires_at <= new Date() || session.token_hash !== actor.tokenHash) throw unauthorized();
   return { user, session };
+}
+export async function logout(db, actor, context) {
+  return withWriteTx(db, async tx => {
+    const { session } = await lockedActor(tx, actor);
+    await model.updateSession(tx, session.id, { revoked_at: new Date() });
+    await appendAudit(tx, { actor, action: 'auth.logout', entityType: 'auth_sessions', entityId: session.id, context });
+  });
+}
+export async function logoutAll(db, actor, context) {
+  return withWriteTx(db, async tx => {
+    await lockedActor(tx, actor);
+    await model.revokeSessions(tx, actor.id);
+    await appendAudit(tx, { actor, action: 'auth.logout_all', entityType: 'users', entityId: actor.id, context });
+  });
+}
+export async function changePassword(db, actor, { current_password, new_password }, context) {
+  const candidate = await model.userById(db, actor.id);
+  if (!candidate?.is_active || !await verifyPassword(current_password, candidate.password_hash)) throw unauthorized();
+  const password_hash = await hashPassword(new_password);
+  return withWriteTx(db, async tx => {
+    const { user, session } = await lockedActor(tx, actor);
+    if (user.password_hash !== candidate.password_hash) throw unauthorized();
+    await model.updateUser(tx, user.id, { password_hash });
+    await model.revokeSessions(tx, user.id, session.id);
+    await appendAudit(tx, { actor, action: 'auth.password_change', entityType: 'users', entityId: user.id, context });
+    return safeUser(user);
+  });
 }
 export async function rotateSession(db, actor, context) {
   const secret = newSecret();

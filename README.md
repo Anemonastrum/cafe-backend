@@ -4,7 +4,7 @@ Backend for a cafe point-of-sale (POS) system, built with Node.js and Express 5 
 
 ## Current status
 
-P01 foundation: testable Express app, validated environment, request/error envelopes, public liveness, protected DB readiness, Prisma Client with MariaDB adapter, native test harness and transaction helpers. Authentication and POS business endpoints are not implemented yet. Initial migration covers users, catalog, shifts, orders, payments, receipts and audit logs. Runtime verified against MariaDB 12.3.3; MySQL 8.0.16+ remains the schema target, not a claim of MySQL runtime testing.
+P01 foundation: testable Express app, validated environment, request/error envelopes, public liveness, protected DB readiness, Prisma Client with MariaDB adapter, native test harness and transaction helpers. P02 adds cookie authentication, session rotation/revocation, CSRF, password change and first-admin bootstrap. POS business endpoints are not implemented yet. Initial migration covers users, catalog, shifts, orders, payments, receipts and audit logs. Runtime verified against MariaDB 12.3.3; MySQL 8.0.16+ remains the schema target, not a claim of MySQL runtime testing.
 
 ## Requirements
 
@@ -81,6 +81,26 @@ SQL comments retain application transaction rules (authorization, row locking, i
 - Errors return `{error:{code,message,details},request_id}`. Unknown failures never expose DB URLs, parser bodies or stack traces.
 - All responses carry server-generated X-Request-ID; JSON limit 1 MiB.
 - SIGINT/SIGTERM drains HTTP, disconnects Prisma; bounded shutdown deadline.
+
+### Authentication
+
+- `POST /api/v1/auth/login`: JSON username/password and exact configured Origin. Returns safe user and csrf_token; sets HttpOnly cafe_session cookie.
+- `GET /api/v1/auth/me`: current active profile and recoverable csrf_token.
+- `POST /api/v1/auth/refresh`: rotate cookie secret, preserve eight-hour absolute expiry. Serialize client refreshes; concurrent refresh loses with 401.
+- `POST /api/v1/auth/logout`, `POST /api/v1/auth/logout-all`: revoke current/all sessions and clear cookie, 204.
+- `PATCH /api/v1/auth/me/password`: current_password/new_password; keeps current session, revokes others.
+
+Every authenticated mutation requires exact Origin plus X-CSRF-Token. Cross-origin browsers must use credentials: include. CORS permits only configured origin. New passwords: 12–128 Unicode characters, at most 512 UTF-8 bytes; never normalized. scrypt uses N=131072/r=8/p=1, about 0.54 seconds per hash on test host, two concurrent jobs plus eight queued (overflow 429). Rate limits: five login failures per 15 minutes per IP and database username identity; 30 auth requests/minute/IP. Stores cap 10000 keys and fail closed. One API process only; shared limiter store required before replicas. Proxy trust remains off until explicit deployment configuration.
+
+### First admin bootstrap
+
+Use only on intended database with no admin account, including inactive admins. No default password or public registration. Prepare a private mode-0600 JSON file outside repository with username, full_name and password; never put password in command arguments/history.
+
+```sh
+node --env-file=.env scripts/bootstrap-admin.mjs < /secure/path/first-admin.json
+```
+
+CLI accepts stdin only, serializes on cafe settings lock, and refuses second admin bootstrap. Remove private input securely after use according to storage policy. Bootstrap integration tests require no preexisting admin in authorized disposable test DB; they refuse rather than delete existing users.
 
 ### `GET /`
 

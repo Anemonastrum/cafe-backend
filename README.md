@@ -4,7 +4,7 @@ Backend for a cafe point-of-sale (POS) system, built with Node.js and Express 5 
 
 ## Current status
 
-P01 foundation: testable Express app, validated environment, request/error envelopes, public liveness, protected DB readiness, Prisma Client with MariaDB adapter, native test harness and transaction helpers. P02 adds cookie authentication, session rotation/revocation, CSRF, password change and first-admin bootstrap. P03 adds employee administration, cafe settings/logo uploads, pricing-rule configuration and payment-method configuration. P04 adds categories, product lifecycle/promotions/images and the filtered POS menu. P05 adds variant/add-on configuration and pure selection validation. Orders, shifts, payments and reporting endpoints remain future phases. Initial migration covers users, catalog, shifts, orders, payments, receipts and audit logs. Runtime verified against MariaDB 12.3.3; MySQL 8.0.16+ remains the schema target, not a claim of MySQL runtime testing.
+P01 foundation: testable Express app, validated environment, request/error envelopes, public liveness, protected DB readiness, Prisma Client with MariaDB adapter, native test harness and transaction helpers. P02 adds cookie authentication, session rotation/revocation, CSRF, password change and first-admin bootstrap. P03 adds employee administration, cafe settings/logo uploads, pricing-rule configuration and payment-method configuration. P04 adds categories, product lifecycle/promotions/images and the filtered POS menu. P05 adds variant/add-on configuration and pure selection validation. P06 adds register management, atomic shift opening/closure, histories and sales summaries. Orders, payments and reporting endpoints remain future phases. Initial migration covers users, catalog, shifts, orders, payments, receipts and audit logs. Runtime verified against MariaDB 12.3.3; MySQL 8.0.16+ remains the schema target, not a claim of MySQL runtime testing.
 
 ## Requirements
 
@@ -107,6 +107,14 @@ Authenticated `/api/v1/categories` and `/api/v1/products` support paginated list
 Product promotion updates merge current state, enforce promo price <= base and valid time windows. Promo start is inclusive, end exclusive. Archive/restore preserves availability. Product image POST/DELETE uses shared managed WebP uploads. External HTTP(S) image URLs are stored only, never fetched or deleted by backend. No catalog hard-delete route.
 
 `GET /api/v1/pos/menu` returns complete visible categories/products arrays with enabled variant/add-on options and promo_active. Variant/add-on group lists include options; cashiers see enabled options only. Admins manage groups and options through product-bound create and group/option PATCH/DELETE routes. Referenced options/groups return 409 on deletion; disable options to preserve history. Add-on limits count summed option quantities per item. Required variants, duplicate/foreign/disabled options and negative promotional sale prices are rejected by selection validation before ordering.
+
+### Registers and shifts
+
+`GET /cash-registers` lists active registers; admins may include inactive. Admin create/PATCH routes manage names, codes and status; disabling an occupied register conflicts. Shift opening accepts only cash_register_id and assigns authenticated actor, including admins. One open shift per cashier and register, serialized through cafe singleton lock.
+
+`GET /cashier-shifts/current` returns own open shift or null. Close is owner/admin only, blocked by noncancelled unpaid originating orders or pending payments. Paid unfinished preparation does not block closure. Repeated close retains original time, closer and notes. No cash drawer fields.
+
+Own/admin shift histories support status/time filters, pagination and admin cashier/register filters. Owner/admin summaries count paid payment amounts attributed to payments.shift_id, never cash tender; method breakdown and duration included. Shift order lists use orders.shift_id. Cross-cashier reads/actions return 404. Close-versus-write ordering verified through shared SQL primitives; mounted order/payment writers arrive in P07/P08.
 
 ### First admin bootstrap
 

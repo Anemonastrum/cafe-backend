@@ -5,7 +5,6 @@ import { mkdtemp,chmod,rm,stat,open } from 'node:fs/promises';
 import { createReadStream,createWriteStream } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { finished } from 'node:stream/promises';
 import { toWire } from '../utils/serialize.js';
 import { csvCell } from '../utils/csv.js';
 import { writeWorkbook } from '../integrations/spreadsheet.js';
@@ -22,8 +21,8 @@ export async function exportReport(db,actor,{report,format,range,signal}){
   if(format==='csv'){
    const file=await open(path,'wx',0o600);try{let bytes=0;const write=async values=>{signal?.throwIfAborted();const line=values.map(csvCell).join(',')+'\r\n';bytes+=Buffer.byteLength(line);if(bytes>byteLimit)tooLarge();await file.writeFile(line);};await write(columns[report]);for(const row of rows)await write(columns[report].map(k=>row[k]));}finally{await file.close();}
   }else{
-   const output=createWriteStream(path,{flags:'wx',mode:0o600});const done=finished(output);done.catch(()=>{});
-   try{await writeWorkbook(rows,columns[report],output,signal);await done;}catch(error){output.destroy();await done.catch(()=>{});throw error;}
+   const output=createWriteStream(path,{flags:'wx',mode:0o600});
+   await writeWorkbook(rows,columns[report],output,signal);
   }
   signal?.throwIfAborted();if((await stat(path)).size>byteLimit)tooLarge();const stream=createReadStream(path);stream.on('close',()=>cleanup().catch(error=>console.error('Export cleanup failed',error.code)));return{stream,cleanup,filename:report+'.'+format,contentType:format==='csv'?'text/csv; charset=utf-8':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'};
  }catch(error){await cleanup();throw error;}

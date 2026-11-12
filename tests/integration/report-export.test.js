@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test,mock } from 'node:test';
 import { readdir } from 'node:fs/promises';
-import { watch } from 'node:fs';
+import fs,{ watch } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import ExcelJS from 'exceljs';
 import { withDatabase } from '../support/database.js';
@@ -26,6 +27,8 @@ test('p10-t4 acceptance: real CSV/XLSX agree with reports; exact IDs, safe text 
   await db.orders.update({where:{id:BigInt(order.body.data.id)},data:{status:'cancelled',cancelled_at:new Date(),cancel_reason:'=bad',cancelled_by_user_id:f.adminA.id}});const ids=await f.api('/admin/reports/export?report=cancellations&format=xlsx');const iw=new ExcelJS.Workbook();await iw.xlsx.load(ids.bytes);assert.equal(iw.worksheets[0].getCell('A2').value,order.body.data.id);
   for(const [query,status] of [['report=sales&format=pdf',422],['report=no&format=csv',422],['report=sales&format=csv&limit=1',422],['report=sales&format=csv&from=2020-01-01T00:00:00Z&to=2022-01-01T00:00:00Z',422]])assert.equal((await f.api('/admin/reports/export?'+query)).status,status);
   assert.equal((await f.api('/admin/reports/export?report=sales&format=csv','GET',undefined,{})).status,401);assert.equal((await f.api('/admin/reports/export?report=sales&format=csv','GET',undefined,f.cashier)).status,403);
+  const create=fs.createWriteStream,m=mock.method(fs,'createWriteStream',(...args)=>{const output=create(...args);output.once('open',()=>output.destroy(Object.assign(new Error('Disk full'),{code:'ENOSPC'})));return output;});syncBuiltinESMExports();
+  try{const failed=await f.api('/admin/reports/export?report=products&format=xlsx');assert.equal(failed.status,500);assert.equal(failed.headers.get('content-disposition'),null);assert.deepEqual(await artifacts(),before);}finally{m.mock.restore();syncBuiltinESMExports();}
   const abort=new AbortController();let observed=false;
   const watcher=watch(tmpdir(),(event,name)=>{if(String(name).startsWith('cafe-export-')){observed=true;abort.abort();}});
   try{await assert.rejects(fetch(f.h.baseUrl+'/api/v1/admin/reports/export?report=products&format=xlsx',{headers:{Cookie:f.admin.cookie},signal:abort.signal}));}finally{watcher.close();}

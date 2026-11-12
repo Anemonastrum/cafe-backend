@@ -137,3 +137,19 @@ export const applyDiscount=(db,actor,{id,discount},context)=>mutation(db,actor,i
 export const removeDiscount=(db,actor,{id,discountId},context)=>mutation(db,actor,id,context,'orders.discount.remove',async(tx,user)=>{
  await discountPermission(tx,user);const row=await model.orderDetail(tx,id);if(!row.fk_order_discount_order_back.some(d=>d.id===discountId))throw new AppError(404,'NOT_FOUND','Not found');await model.deleteDiscount(tx,discountId);
 });
+export const changeStatus=(db,actor,{id,status},context)=>mutation(db,actor,id,context,'orders.status',async(tx,user,order)=>{
+ if(order.status==='cancelled')conflict();
+ if(order.status===status)return false;
+ const states=['pending','preparing','ready','completed'];
+ if(states.indexOf(status)!==states.indexOf(order.status)+1||order.is_held||(status==='completed'&&order.payment_status!=='paid'))conflict();
+ await model.updateOrder(tx,id,{status,...(status==='completed'?{completed_at:new Date()}:{})});
+ await model.insertInitialHistory(tx,{order_id:id,from_status:order.status,to_status:status,changed_by_user_id:user.id});
+},{paidPreparation:true,reprice:false});
+export const cancelOrder=(db,actor,{id,reason},context)=>mutation(db,actor,id,context,'orders.cancel',async(tx,user,order)=>{
+ if(order.status==='cancelled')return false;
+ await assertEditable(tx,order);const settings=await model.settingsForPricing(tx);
+ if(user.role!=='admin'&&!settings.cashier_can_cancel)throw new AppError(403,'CANCEL_FORBIDDEN','Cashier cancellation permission required');
+ await model.updateOrder(tx,id,{status:'cancelled',cancelled_at:new Date(),cancel_reason:reason,cancelled_by_user_id:user.id,cancel_approved_by_user_id:user.role==='admin'?user.id:null});
+ await model.insertInitialHistory(tx,{order_id:id,from_status:order.status,to_status:'cancelled',changed_by_user_id:user.id,notes:reason});
+},{paidPreparation:true,reprice:false});
+export async function listOrderHistory(db,actor,id){scoped(actor,await model.orderById(db,id));return model.historyRows(db,id);}

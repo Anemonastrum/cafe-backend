@@ -33,6 +33,7 @@
   "dependencies": {
     "@prisma/adapter-mariadb": "7.10.1",
     "@prisma/client": "7.10.1",
+    "exceljs": "4.4.0",
     "express": "^5.3.0",
     "express-rate-limit": "8.7.4",
     "fontkit": "2.0.4",
@@ -43,5 +44,10 @@
   "devDependencies": {
     "pdf-parse": "2.4.5",
     "prisma": "7.10.1"
+  },
+  "overrides": {
+    "exceljs": {
+      "uuid": "11.1.1"
+    }
   }
 }

@@ -2,12 +2,16 @@ import { Router } from 'express';
 import { authenticate } from '../middlewares/authenticate.js';
 import { authorize } from '../middlewares/authorize.js';
 import { csrf } from '../middlewares/csrf.js';
+import { employeeReportInput } from '../validators/reports.validator.js';
 import { usersInput } from '../validators/users.validator.js';
 import { usersController } from '../controllers/users.controller.js';
 export function usersRoutes({ db, config }) {
   const router = Router(), c = usersController(db);
   router.use(authenticate(db, config), authorize('admin'));
   router.get('/', usersInput('list'), c.list);
+  router.get('/:id/orders',employeeReportInput('orders'),c.orders);
+  router.get('/:id/shifts',employeeReportInput('shifts'),c.shifts);
+  router.get('/:id/sales-summary',employeeReportInput('summary'),c.summary);
   router.get('/:id', usersInput('get'), c.get);
   router.post('/', csrf(config), usersInput('create'), c.create);
   router.patch('/:id', csrf(config), usersInput('update'), c.update);

@@ -1,8 +1,12 @@
+import * as reports from '../services/report-query.service.js';
 import * as users from '../services/users.service.js';
 import { toWire } from '../utils/serialize.js';
 import { requestContext } from './auth.controller.js';
 export function usersController(db) {
   return {
+    orders: async(req,res)=>res.json(toWire(await reports.employeeOrders(db,req.actor,{id:req.entityId,query:req.input}))),
+    shifts: async(req,res)=>res.json(toWire(await reports.employeeShifts(db,req.actor,{id:req.entityId,query:req.input}))),
+    summary: async(req,res)=>res.json({data:toWire(await reports.employeeSalesSummary(db,req.actor,{id:req.entityId,query:req.input}))}),
     list: async (req, res) => res.json(toWire(await users.listUsers(db, req.actor, req.input))),
     get: async (req, res) => res.json({ data: toWire(await users.getUser(db, req.actor, req.entityId)) }),
     create: async (req, res) => res.status(201).json({ data: toWire(await users.createUser(db, req.actor, req.input, requestContext(req))) }),

@@ -1,9 +1,27 @@
 import { AppError } from '../utils/errors.js';
 import { parseId } from '../utils/ids.js';
+import { parsePage } from '../utils/pagination.js';
 const invalid=()=>{throw new AppError(422,'INVALID_ORDER','Invalid order input');};
 const object=(value,fields)=>{if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(k=>!fields.includes(k)))invalid();};
 const text=(value,max)=>{if(value!==undefined&&value!==null&&(typeof value!=='string'||[...value].length>max))invalid();return value??null;};
 export function orderInput(kind){return(req,res,next)=>{
+ if(req.params.id!==undefined)req.entityId=parseId(req.params.id);
+ if(['list','active','detail'].includes(kind)){
+  const q=req.query,fields=kind==='detail'?[]:['page','limit','sort_by','sort_order',...(kind==='list'?['status','payment_status','order_type','is_held','from','to','search']:[])];
+  if(Object.keys(q).some(k=>!fields.includes(k)))invalid();
+  if(q.status!==undefined&&!['pending','preparing','ready','completed','cancelled'].includes(q.status))invalid();
+  if(q.payment_status!==undefined&&!['pending','paid'].includes(q.payment_status))invalid();
+  if(q.order_type!==undefined&&!['dine_in','takeaway'].includes(q.order_type))invalid();
+  if(q.is_held!==undefined&&!['true','false'].includes(q.is_held))invalid();
+  if(q.search!==undefined&&(typeof q.search!=='string'||[...q.search].length>180))invalid();
+  const input={...parsePage(q,['created_at','order_number']),status:q.status,payment_status:q.payment_status,order_type:q.order_type,is_held:q.is_held===undefined?undefined:q.is_held==='true',search:q.search};
+  if(kind==='active'&&(q.sort_by!==undefined||q.sort_order!==undefined))invalid();
+  for(const k of ['from','to'])if(q[k]!==undefined){
+   const v=q[k];if(typeof v!=='string'||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?(Z|[+-]\d{2}:\d{2})$/.test(v))invalid();
+   const calendar=new Date(v.slice(0,19)+'Z'),value=new Date(v);if(!Number.isFinite(calendar.getTime())||calendar.toISOString().slice(0,19)!==v.slice(0,19)||!Number.isFinite(value.getTime())||value.getUTCFullYear()<1000||value.getUTCFullYear()>9999)invalid();input[k]=value;
+  }
+  if(input.from&&input.to&&(input.to<=input.from||input.to-input.from>366*86400000))invalid();req.input=input;return next();
+ }
  if(Object.keys(req.query).length)invalid();const b=req.body;
  object(b,['order_type','notes','items','discounts',...(kind==='create'?['client_request_id']:[])]);
  if(!['dine_in','takeaway'].includes(b.order_type))invalid();

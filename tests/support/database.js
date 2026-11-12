@@ -1,7 +1,9 @@
 import { readFileSync, statSync } from 'node:fs';
 import { parseEnv } from 'node:util';
 import { createDatabase } from '../../src/configs/database.js';
+import { midtransDatabaseConfig } from './midtrans-database.js';
 export function testDatabaseConfig() {
+  if (process.env.MIDTRANS_TEST_DATABASE_URL !== undefined || process.env.MIDTRANS_TEST_DATABASE_TARGET !== undefined) return midtransDatabaseConfig();
   const path = new URL('../../.env.test', import.meta.url);
   if ((statSync(path).mode & 0o077) !== 0) throw new Error('.env.test must be owner-readable only');
   const env = parseEnv(readFileSync(path, 'utf8'));

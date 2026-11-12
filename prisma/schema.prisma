@@ -383,6 +383,7 @@ model orders {
   order_type                   orders_order_type
   status                       orders_status           @default(pending)
   is_held                      Boolean                 @default(false)
+  reconciliation_hold          Boolean                 @default(false)
   payment_status               orders_payment_status   @default(pending)
   notes                        String?                 @db.Text
   subtotal                     Decimal                 @default(0) @db.Decimal(14, 2)
@@ -559,6 +560,8 @@ model payments {
   gateway_order_id              String?           @db.VarChar(120)
   gateway_transaction_id        String?           @db.VarChar(120)
   gateway_status                String?           @db.VarChar(80)
+  gateway_attempt_snapshot      Json?
+  gateway_charge_started_at     DateTime?         @db.DateTime(3)
   processed_by_user_id          BigInt            @db.UnsignedBigInt
   paid_at                       DateTime?         @db.DateTime(3)
   failed_at                     DateTime?         @db.DateTime(3)
@@ -608,10 +611,10 @@ model receipts {
   pdf_url                       String?                  @db.VarChar(1024)
   digital_delivery_email        String?                  @db.VarChar(190)
   delivery_status               receipts_delivery_status @default(not_requested)
-  issued_by_user_id             BigInt                   @db.UnsignedBigInt
+  issued_by_user_id             BigInt?                  @db.UnsignedBigInt
   issued_at                     DateTime                 @default(now()) @db.DateTime(3)
   fk_receipts_payment           payments                 @relation("fk_receipts_payment", fields: [payment_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_receipts_payment")
-  fk_receipts_user              users                    @relation("fk_receipts_user", fields: [issued_by_user_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_receipts_user")
+  fk_receipts_user              users?                   @relation("fk_receipts_user", fields: [issued_by_user_id], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_receipts_user")
   fk_receipt_event_receipt_back receipt_events[]         @relation("fk_receipt_event_receipt")
 
   @@unique([payment_id], map: "uq_receipts_payment")

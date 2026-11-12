@@ -10,7 +10,7 @@ import { lockCafe } from '../../src/models/lock.model.js';
 
 test('real adapter, completed migration, protected readiness and SQL constraints', async () => withDatabase(async db => {
   const version = await db.$queryRaw`SELECT VERSION() AS version, DATABASE() AS db`;
-  assert.match(version[0].version, /MariaDB/); assert.equal(version[0].db, 'app');
+  assert.match(version[0].version, /MariaDB/); assert.equal(version[0].db, process.env.MIDTRANS_TEST_DATABASE_TARGET ? 'app_midtrans_test' : 'app');
   console.log(`DB engine: ${version[0].version}`);
   const tables = await db.$queryRaw`SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME != '_prisma_migrations'`;
   assert.equal(tables.length, 28);

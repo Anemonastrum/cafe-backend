@@ -29,7 +29,7 @@ export async function paymentLocks(tx,actor,orderId,extraShiftIds=[]){
  return{user,order,own,shifts,requireOpen(){if(!own||!order.shift_id||!shifts.some(s=>s.id===own.id&&s.status==='open')||!shifts.some(s=>s.id===order.shift_id&&s.status==='open')||extraShiftIds.some(id=>!shifts.some(s=>s.id===id&&s.status==='open')))conflict();}};
 }
 export async function verifyCheckout(tx,order,{allowPendingId=null}={}){
- if(order.payment_status==='paid'||['cancelled','completed'].includes(order.status)||order.is_held||await model.paidAttempt(tx,order.id))conflict();
+ if(order.reconciliation_hold||order.payment_status==='paid'||['cancelled','completed'].includes(order.status)||order.is_held||await model.paidAttempt(tx,order.id))conflict();
  const pending=await orders.pendingAttempt(tx,order.id);if(pending&&pending.id!==allowPendingId)conflict();
  const row=await orders.orderDetail(tx,order.id),items=row.fk_order_items_order_back;if(!items.length)conflict();
  let p;try{p=calculateQuote({lines:items.map(snapshotLine),discounts:row.fk_order_discount_order_back.map(d=>({key:String(d.id),name:d.name,calculation:d.calculation,value:d.configured_value})),charges:row.fk_order_charge_order_back.map(c=>({key:String(c.id),name:c.name,calculation:c.calculation,value:c.configured_value}))});}catch{conflict();}
@@ -100,7 +100,8 @@ export async function confirmManual(db,actor,{id},context){
 export async function failManualPayment(db,actor,{id,reason,expected_status},context){
  if(expected_status!=='pending'||typeof reason!=='string'||!reason.trim()||[...reason].length>500)throw new AppError(422,'INVALID_RECOVERY','Pending status and nonempty reason required');
  return withWriteTx(db,async tx=>{
-  const {user,payment}=await manualLocked(tx,actor,id);if(user.role!=='admin')throw new AppError(403,'FORBIDDEN','Admin required');
+  const {user,payment,order}=await manualLocked(tx,actor,id);
+  if(order.reconciliation_hold)conflict();if(user.role!=='admin')throw new AppError(403,'FORBIDDEN','Admin required');
   if(payment.status!==expected_status)conflict();
   const failed=await model.updatePayment(tx,id,{status:'failed',failed_at:new Date()});
   await event(tx,{payment_id:id,event_type:'failed',payload:{status:'failed',actor_id:String(user.id),reason}});

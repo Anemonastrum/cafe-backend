@@ -1,6 +1,6 @@
 # Midtrans sandbox — partial implementation, disabled
 
-`src/integrations/midtrans.js` provides standalone sandbox-only QRIS transport and notification signature verification. It is not imported by payment routes. Existing Midtrans attempts still return `503 PROVIDER_DISABLED`; webhook route remains absent. No schema migration or production configuration added.
+`src/integrations/midtrans.js` provides standalone sandbox-only QRIS transport and notification signature verification. It is not imported by payment routes. Existing Midtrans attempts still return `503 PROVIDER_DISABLED`; webhook route remains absent. Forward migration `20261113000100_midtrans_reconciliation` adds order reconciliation hold, nullable immutable attempt JSON/dispatch timestamp storage and nullable autonomous receipt issuer. No production configuration added. Apply forward migrations before running updated client; existing schemas are not automatically migrated.
 
 ## Transport boundary
 
@@ -13,10 +13,14 @@
 
 ## Remaining gates
 
-Persist immutable attempts and dispatch claim before network; enforce order reconciliation holds across mutations and related shifts; implement authenticated admin status/expire recovery; nullable autonomous receipt issuer and separate audit actor; locked monotonic callback processing; admin-only sanitized evidence projection. All require approved forward migration and real DB/race tests within separately authorized isolated schemas. Existing databases and populated recovery copies must remain untouched.
+Persistence columns and hold guards now exist. Held orders reject order/item/discount/lifecycle/cancel/hold mutations, checkout and manual failure recovery; existing immutable paid/replay reads remain allowed. Shift closure detects held orders through originating shift or any attempt shift, even failed attempt and paid/cancelled order. Existing closed shifts stay closed. No public setter or generic hold-release endpoint exists.
+
+Migration exercised on authorized isolated schemas only: populated order/cash payment/receipt upgrade preserved exact old fields, nullable issuer still enforces nonnull FK, JSON/timestamp roundtrip passed. Fixture/race checks are MariaDB evidence, not MySQL or sandbox evidence.
+
+Remaining: create immutable attempts and dispatch claim before network, authenticated admin status/expire recovery, separate autonomous receipt/audit actor in settlement, locked monotonic callback processing and admin-only sanitized conflict projection. Columns alone do not supply those behaviors. Existing databases and populated recovery copies must remain untouched.
 
 Current signature-secret rule is based on indexed official documentation, not genuine merchant notification evidence. Do not enable until actual sandbox charge/QR, notification signature, trusted status, duplicate/out-of-order callbacks, timeout/restart and late-conflict gates pass. Sandbox charge and dashboard registration need separate authorization. Production remains unprovisioned and blocked independently.
 
 Temporary callback tunnel is reachability-only until handler exists: callback POST returns `503`, not acknowledgement; tested unrelated paths return `404`. Tunnel does not forward full API. URL/process lifetime belongs in local checkpoint, never a stable production setting. Do not register unfinished callback in merchant dashboard.
 
-Offline check: `node --test tests/unit/midtrans.test.js` and `npm test`. Fake transport tests establish local boundary behavior only; no sandbox success, DB persistence or settlement claim.
+Offline check: `node --test tests/unit/midtrans.test.js` and `npm test`. Live tests require private `MIDTRANS_TEST_DATABASE_URL` and exact `MIDTRANS_TEST_DATABASE_TARGET=10.10.10.9:3306/app_midtrans_test`; explicit selection is validated before loading historical `.env.test`, and invalid selection never falls back. No provisioning/reset happens inside tests. With authorized private env loaded, `npm run test:all` exercises regressions on isolated target; use no production/shared database. Hold/closure tests write synthetic fixture holds directly, not through an implemented provider callback. Fake transport tests establish local boundary behavior only; no sandbox success, DB persistence or settlement claim.

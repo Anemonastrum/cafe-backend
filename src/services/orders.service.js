@@ -72,7 +72,7 @@ export async function createOrder(db,actor,input,context){
  });
 }
 const conflict=()=>{throw new AppError(409,'ORDER_CONFLICT','Order state does not permit this action');};
-export async function assertEditable(tx,order){if(order.payment_status==='paid'||['cancelled','completed'].includes(order.status)||await model.pendingAttempt(tx,order.id))conflict();}
+export async function assertEditable(tx,order){if(order.reconciliation_hold||order.payment_status==='paid'||['cancelled','completed'].includes(order.status)||await model.pendingAttempt(tx,order.id))conflict();}
 async function mutation(db,actor,id,context,action,fn,{paidPreparation=false,reprice=true}={}){
  return withWriteTx(db,async tx=>{
   await lockCafe(tx);const hint=scoped(actor,await model.orderById(tx,id));
@@ -81,6 +81,7 @@ async function mutation(db,actor,id,context,action,fn,{paidPreparation=false,rep
   if(shiftHint)await lockRegister(tx,shiftHint.cash_register_id);
   const shift=shiftHint?await lockShift(tx,shiftHint.id):null;
   const order=await lockOrderForActor(tx,user,id);
+  if(order.reconciliation_hold)conflict();
   if(!(paidPreparation&&order.payment_status==='paid')&&(!shift||shift.status!=='open'))conflict();
   if(!paidPreparation)await assertEditable(tx,order);
   const changed=await fn(tx,user,order);

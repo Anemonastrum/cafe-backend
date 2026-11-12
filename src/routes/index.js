@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import { dashboardRoutes } from './dashboard.routes.js';
+import { auditRoutes } from './audit.routes.js';
 import { reportsRoutes } from './reports.routes.js';
 import { healthRoutes } from './health.routes.js';
 import { authRoutes } from './auth.routes.js';
@@ -18,6 +20,8 @@ export function apiRoutes(dependencies) {
   const router = Router();
   router.use(healthRoutes(dependencies));
   router.use(reportsRoutes(dependencies));
+  router.use(dashboardRoutes(dependencies));
+  router.use(auditRoutes(dependencies));
   router.use('/auth', authRoutes(dependencies));
   router.use('/admin/users', usersRoutes(dependencies));
   router.use(settingsRoutes(dependencies));

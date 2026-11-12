@@ -5,7 +5,7 @@ export async function employeeRows(tx,id,q,kind){const table=kind==='orders'?tx.
 export async function ownerSales(tx,id,range){const [row]=await tx.$queryRaw(Prisma.sql`SELECT COUNT(DISTINCT o.id) AS transaction_count, COALESCE(SUM(p.amount),0) AS paid_sales_total FROM payments p JOIN orders o ON o.id=p.order_id WHERE p.status='paid' AND o.cashier_id=${id} AND p.paid_at>=${range.from} AND p.paid_at<${range.to}`);return row;}
 
 const paidRange=range=>Prisma.sql`p.status='paid' AND p.paid_at>=${range.from} AND p.paid_at<${range.to}`;
-export async function reportRows(tx,{report,range,group_by='day',page}){
+export async function reportRows(tx,{report,range,group_by='day',page,rank_by,paidOnly=false}){
  let query;
  if(report==='sales'){
   const local=Prisma.sql`DATE_ADD(p.paid_at,INTERVAL 7 HOUR)`,bucket=group_by==='week'?Prisma.sql`DATE_SUB(DATE(${local}),INTERVAL WEEKDAY(${local}) DAY)`:group_by==='month'?Prisma.sql`DATE_FORMAT(${local},'%Y-%m-01')`:Prisma.sql`DATE(${local})`;
@@ -20,7 +20,8 @@ export async function reportRows(tx,{report,range,group_by='day',page}){
  if(report==='employees')query=Prisma.sql`SELECT o.cashier_id AS owner_id,COUNT(DISTINCT o.id) AS count,SUM(p.amount) AS revenue FROM payments p JOIN orders o ON o.id=p.order_id WHERE ${paidRange(range)} GROUP BY o.cashier_id`;
  if(report==='orders')query=Prisma.sql`SELECT o.status,COUNT(*) AS count,SUM(o.is_held) AS held_count,SUM(o.payment_status<>'paid') AS unpaid_count FROM orders o WHERE o.created_at>=${range.from} AND o.created_at<${range.to} GROUP BY o.status`;
  if(report==='cancellations')query=Prisma.sql`SELECT id AS order_id,cancelled_at,cancel_reason AS reason,cancelled_by_user_id AS actor,cancel_approved_by_user_id AS approval FROM orders WHERE status='cancelled' AND cancelled_at>=${range.from} AND cancelled_at<${range.to}`;
- const order={payments:Prisma.sql`code,CAST(status AS CHAR)`,products:Prisma.sql`product_id,product_name,category_name`,categories:Prisma.sql`category_name`,employees:Prisma.sql`owner_id`,orders:Prisma.sql`status`,cancellations:Prisma.sql`cancelled_at,order_id`}[report];
+ if(paidOnly)query=Prisma.sql`SELECT * FROM (${query}) paid_groups WHERE status='paid'`;
+ const order=rank_by==='quantity'?Prisma.sql`quantity DESC,revenue DESC,product_id,product_name,category_name`:rank_by==='revenue'?Prisma.sql`revenue DESC,quantity DESC,product_id,product_name,category_name`:{payments:Prisma.sql`code,CAST(status AS CHAR)`,products:Prisma.sql`product_id,product_name,category_name`,categories:Prisma.sql`category_name`,employees:Prisma.sql`owner_id`,orders:Prisma.sql`status`,cancellations:Prisma.sql`cancelled_at,order_id`}[report];
  const [total]=await tx.$queryRaw(Prisma.sql`SELECT COUNT(*) AS total FROM (${query}) grouped_report`);
  return{data:await tx.$queryRaw(Prisma.sql`${query} ORDER BY ${order} LIMIT ${page.limit} OFFSET ${page.skip}`),total:Number(total.total)};
 }

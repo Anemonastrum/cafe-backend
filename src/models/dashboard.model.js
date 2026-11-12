@@ -1,0 +1,3 @@
+import { inRange } from './report.model.js';
+export async function operationalCounts(tx){return{active_orders:await tx.orders.count({where:{status:{in:['pending','preparing','ready']}}}),pending_orders:await tx.orders.count({where:{status:'pending'}}),open_shifts:await tx.cashier_shifts.count({where:{status:'open'}})};}
+export async function recentOrders(tx,q){const where={created_at:inRange(q.range)};return{data:await tx.orders.findMany({where,orderBy:[{created_at:'desc'},{id:'desc'}],skip:q.skip,take:q.limit,select:{id:true,order_number:true,cashier_id:true,status:true,payment_status:true,is_held:true,grand_total:true,created_at:true}}),total:await tx.orders.count({where})};}

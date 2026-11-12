@@ -1,0 +1,131 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { randomUUID } from 'node:crypto';
+import { mkdtemp,rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import sharp from 'sharp';
+import cases from '../fixtures/core-endpoints.json' with {type:'json'};
+import { withDatabase } from '../support/database.js';
+import { orderFixture } from '../support/orders.js';
+import { startApp,request,loginAs } from '../support/http.js';
+
+test('p11-t2 acceptance: 120 mounted successes with auth, role, owner and CSRF gates',{timeout:120000},async()=>withDatabase(async db=>{
+ assert.equal(cases.length,120);assert.equal(new Set(cases.map(r=>r.method+' '+r.path)).size,120);
+ const f=await orderFixture(db),storageDir=await mkdtemp(join(tmpdir(),'cafe-matrix-')),config={...f.config,storageDir},h=await startApp({db,config});
+ const settings=await db.cafe_settings.findUnique({where:{id:1}}),methods=await db.payment_methods.findMany(),done=new Set(),extra={users:[],products:[],categories:[],registers:[],taxes:[],charges:[],discounts:[]};
+ const png=await sharp({create:{width:2,height:2,channels:3,background:'red'}}).png().toBuffer();
+ const raw=async(method,path,body,session={},headers={},upload=false)=>{
+  if(!upload)return request(h,{method,path,body,...session,headers:{Origin:config.allowedOrigin,...headers}});
+  const form=new FormData();form.set('file',new Blob([png],{type:'image/png'}),'image.png');
+  const response=await fetch(h.baseUrl+'/api/v1'+path,{method,body:form,headers:{Origin:config.allowedOrigin,...(session.cookie?{Cookie:session.cookie}:{}),...(session.csrf?{'X-CSRF-Token':session.csrf}:{}),...headers}});
+  return{status:response.status,body:await response.json()};
+ };
+ const hit=async(method,pattern,path=pattern,body,session=f.admin,{upload=false,status,owner=false}={})=>{
+  const spec=cases.find(r=>r.method===method&&r.path===pattern);assert.ok(spec,method+' '+pattern);
+  if(!['/auth/login','/health','/ready'].includes(pattern))assert.equal((await raw(method,path,body,{})).status,401,'auth '+pattern);
+  if(spec.access==='A')assert.equal((await raw(method,path,body,f.cashier)).status,403,'role '+pattern);
+  if(owner)assert.equal((await raw(method,path,body,f.other,{'Idempotency-Key':randomUUID()})).status,404,'owner '+pattern);
+  if(method!=='GET'&&pattern!=='/auth/login')assert.equal((await raw(method,path,body,{cookie:session.cookie})).status,403,'csrf '+pattern);
+  const result=await raw(method,path,body,session,pattern==='/ready'?{'X-Readiness-Key':config.readinessSecret}:method!=='GET'?{'Idempotency-Key':randomUUID()}:{},upload);
+  assert.ok(status?result.status===status:result.status>=200&&result.status<300,method+' '+path+' '+result.status+' '+JSON.stringify(result.body));
+  done.add(method+' '+pattern);return result.body?.data;
+ };
+ try{
+  await hit('GET','/health');assert.equal((await raw('GET','/ready')).status,403);await hit('GET','/ready');
+  const u=await hit('POST','/admin/users',undefined,{full_name:'Matrix user',username:'matrix-'+randomUUID(),password:f.password,role:'cashier'});extra.users.push(BigInt(u.id));
+  await hit('GET','/admin/users');await hit('GET','/admin/users/:id','/admin/users/'+u.id);
+  await hit('PATCH','/admin/users/:id','/admin/users/'+u.id,{full_name:'Matrix changed'});
+  await hit('PATCH','/admin/users/:id/status','/admin/users/'+u.id+'/status',{is_active:true});
+  await hit('POST','/admin/users/:id/reset-password','/admin/users/'+u.id+'/reset-password',{password:f.password});
+  const login=await raw('POST','/auth/login',{username:u.username,password:f.password},{},{});assert.equal(login.status,200);done.add('POST /auth/login');
+  let separate=await loginAs(h,u.username,f.password);
+  await hit('GET','/auth/me',undefined,undefined,separate);
+  await hit('POST','/auth/refresh',undefined,{},separate);
+  // Rotation cookie is required: old credential cannot mutate after refresh.
+  assert.equal((await raw('GET','/auth/me',undefined,separate)).status,401);separate=await loginAs(h,u.username,f.password);
+  await hit('PATCH','/auth/me/password',undefined,{current_password:f.password,new_password:f.password+'new'},separate);
+  separate=await loginAs(h,u.username,f.password+'new');await hit('POST','/auth/logout',undefined,{},separate);
+  separate=await loginAs(h,u.username,f.password+'new');await hit('POST','/auth/logout-all',undefined,{},separate);
+  const c=await hit('POST','/categories',undefined,{name:'matrix-'+randomUUID()});extra.categories.push(BigInt(c.id));
+  await hit('GET','/categories');await hit('GET','/categories/:id','/categories/'+c.id);
+  await hit('PATCH','/categories/:id','/categories/'+c.id,{description:'changed'});
+  await hit('PATCH','/categories/:id/status','/categories/'+c.id+'/status',{is_active:true});
+  const p=await hit('POST','/products',undefined,{name:'Matrix product',category_id:c.id,base_price:'5000'});extra.products.push(BigInt(p.id));
+  await hit('GET','/products');await hit('GET','/products/:id','/products/'+p.id);
+  await hit('PATCH','/products/:id','/products/'+p.id,{description:'changed'});
+  await hit('PATCH','/products/:id/availability','/products/'+p.id+'/availability',{is_enabled:true});
+  await hit('PATCH','/products/:id/promotion','/products/'+p.id+'/promotion',{promo_price:'4000'});
+  await hit('POST','/products/:id/image','/products/'+p.id+'/image',undefined,f.admin,{upload:true});
+  await hit('DELETE','/products/:id/image','/products/'+p.id+'/image');
+  await hit('POST','/products/:id/archive','/products/'+p.id+'/archive',{});
+  await hit('POST','/products/:id/restore','/products/'+p.id+'/restore',{});await hit('GET','/pos/menu');
+  for(const [type,groupRoot,optionRoot] of [['variant','variant-groups','variant-options'],['addon','addon-groups','addon-options']]){
+   const path='/products/'+f.product.id+'/'+groupRoot;
+   const group=await hit('POST','/products/:productId/'+groupRoot,path,{name:'Matrix '+type});
+   await hit('GET','/products/:productId/'+groupRoot,path);
+   await hit('PATCH','/'+groupRoot+'/:id','/'+groupRoot+'/'+group.id,{name:'Changed '+type});
+   const option=await hit('POST','/'+groupRoot+'/:id/options','/'+groupRoot+'/'+group.id+'/options',{name:'Option',...(type==='addon'?{price:'1'}:{price_delta:'1'})});
+   await hit('PATCH','/'+optionRoot+'/:id','/'+optionRoot+'/'+option.id,{name:'Changed option'});
+   await hit('DELETE','/'+optionRoot+'/:id','/'+optionRoot+'/'+option.id);
+   await hit('DELETE','/'+groupRoot+'/:id','/'+groupRoot+'/'+group.id);
+  }
+  for(const [kind,key,values] of [['taxes','taxes',{rate_percent:'10'}],['service-charges','charges',{calculation:'fixed',value:'1',is_auto_applied:false}],['discounts','discounts',{calculation:'fixed',value:'1'}]]){
+   const rule=await hit('POST','/admin/'+kind,undefined,{name:'matrix-'+randomUUID(),...values});extra[key].push(BigInt(rule.id));
+   await hit('GET','/admin/'+kind);await hit('PATCH','/admin/'+kind+'/:id','/admin/'+kind+'/'+rule.id,{is_active:false});
+  }
+  await hit('GET','/payment-methods');await hit('GET','/admin/payment-methods');
+  await hit('PATCH','/admin/payment-methods/:id','/admin/payment-methods/'+methods[0].id,{is_enabled:true});
+  await hit('GET','/settings/public');await hit('GET','/admin/settings');
+  await hit('PATCH','/admin/settings',undefined,{cafe_name:'Matrix cafe',cashier_can_cancel:true,cashier_can_discount:true});
+  await hit('POST','/admin/settings/logo',undefined,undefined,f.admin,{upload:true});await hit('DELETE','/admin/settings/logo');
+  const reg=await hit('POST','/admin/cash-registers',undefined,{name:'Matrix register',code:randomUUID()});extra.registers.push(BigInt(reg.id));
+  await hit('PATCH','/admin/cash-registers/:id','/admin/cash-registers/'+reg.id,{name:'Matrix changed'});await hit('GET','/cash-registers');
+  const shift=await hit('POST','/cashier-shifts/open',undefined,{cash_register_id:String(f.registers[0].id)},f.cashier);
+  await hit('GET','/cashier-shifts/current',undefined,undefined,f.cashier);await hit('GET','/cashier-shifts/mine',undefined,undefined,f.cashier);
+  await hit('GET','/admin/cashier-shifts');await hit('GET','/admin/cashier-shifts/:id','/admin/cashier-shifts/'+shift.id);
+  await hit('POST','/orders/quote',undefined,{order_type:f.input.order_type,items:f.input.items},f.cashier);
+  const order=await hit('POST','/orders',undefined,f.input,f.cashier);assert.ok(await db.orders.findUnique({where:{id:BigInt(order.id)}}));
+  await hit('GET','/orders');await hit('GET','/orders/active');
+  await hit('GET','/orders/:id','/orders/'+order.id,undefined,f.cashier,{owner:true});
+  await hit('PATCH','/orders/:id','/orders/'+order.id,{notes:'Matrix note'},f.cashier,{owner:true});
+  await hit('POST','/orders/:id/items','/orders/'+order.id+'/items',{product_id:String(f.product.id),quantity:1},f.cashier,{owner:true});
+  const detail=await f.api('/orders/'+order.id,'GET',undefined,f.cashier),item=detail.body.data.items.at(-1);
+  await hit('PATCH','/orders/:id/items/:itemId','/orders/'+order.id+'/items/'+item.id,{quantity:2},f.cashier,{owner:true});
+  await hit('DELETE','/orders/:id/items/:itemId','/orders/'+order.id+'/items/'+item.id,undefined,f.cashier,{owner:true});
+  await hit('POST','/orders/:id/hold','/orders/'+order.id+'/hold',{},f.cashier,{owner:true});await hit('POST','/orders/:id/resume','/orders/'+order.id+'/resume',{},f.cashier,{owner:true});
+  await hit('POST','/orders/:id/discounts','/orders/'+order.id+'/discounts',{name:'Matrix discount',calculation:'fixed',value:'1'},f.cashier,{owner:true});
+  const discounts=(await f.api('/orders/'+order.id,'GET',undefined,f.cashier)).body.data.discounts;
+  await hit('DELETE','/orders/:id/discounts/:discountId','/orders/'+order.id+'/discounts/'+discounts[0].id,undefined,f.cashier,{owner:true});
+  await hit('PATCH','/orders/:id/status','/orders/'+order.id+'/status',{status:'preparing'},f.cashier,{owner:true});await hit('GET','/orders/:id/history','/orders/'+order.id+'/history',undefined,f.cashier,{owner:true});
+  const cancel=(await f.api('/orders','POST',{...f.input,client_request_id:randomUUID()},f.cashier)).body.data;
+  await hit('POST','/orders/:id/cancel','/orders/'+cancel.id+'/cancel',{reason:'Matrix cancel'},f.cashier,{owner:true});
+  const payment=await hit('POST','/orders/:orderId/payments/cash','/orders/'+order.id+'/payments/cash',{cash_received:'100000'},f.cashier,{owner:true});
+  const manualOrder=(await f.api('/orders','POST',{...f.input,client_request_id:randomUUID()},f.cashier)).body.data;
+  assert.equal((await raw('POST','/orders/'+manualOrder.id+'/payments/qris',{provider:'midtrans'},f.cashier,{'Idempotency-Key':randomUUID()})).status,503);
+  const manual=await hit('POST','/orders/:orderId/payments/qris','/orders/'+manualOrder.id+'/payments/qris',{provider:'manual'},f.cashier,{owner:true});
+  await hit('POST','/payments/:id/confirm-manual','/payments/'+manual.id+'/confirm-manual',{},f.cashier,{owner:true});
+  await hit('GET','/payments/:id','/payments/'+payment.id,undefined,f.cashier,{owner:true});
+  await hit('GET','/orders/:orderId/payments','/orders/'+order.id+'/payments',undefined,f.cashier,{owner:true});await hit('GET','/admin/payments');
+  await hit('GET','/admin/payments/:id/events','/admin/payments/'+payment.id+'/events');
+  const receipt=await db.receipts.findUnique({where:{payment_id:BigInt(payment.id)}});
+  await hit('GET','/orders/:orderId/receipt','/orders/'+order.id+'/receipt',undefined,f.cashier,{owner:true});
+  for(const suffix of ['','/print','/pdf'])await hit('GET','/receipts/:id'+suffix,'/receipts/'+receipt.id+suffix,undefined,f.cashier,{owner:true});
+  await hit('POST','/receipts/:id/reprint','/receipts/'+receipt.id+'/reprint',undefined,f.cashier,{owner:true});await hit('GET','/admin/receipts/:id/events','/admin/receipts/'+receipt.id+'/events');
+  for(const suffix of ['/summary','/orders'])await hit('GET','/cashier-shifts/:id'+suffix,'/cashier-shifts/'+shift.id+suffix,undefined,f.cashier,{owner:true});
+  await hit('POST','/cashier-shifts/:id/close','/cashier-shifts/'+shift.id+'/close',{},f.cashier,{owner:true});
+  for(const suffix of ['/orders','/shifts','/sales-summary'])await hit('GET','/admin/users/:id'+suffix,'/admin/users/'+f.cashierA.id+suffix);
+  for(const name of ['summary','sales-trend','top-products','payment-breakdown','recent-orders','employee-activity'])await hit('GET','/admin/dashboard/'+name);
+  for(const name of ['sales','payments','products','categories','employees','orders','cancellations'])await hit('GET','/admin/reports/'+name);
+  await hit('GET','/admin/reports/export','/admin/reports/export?report=sales&format=csv');
+  const audit=await hit('GET','/admin/audit-logs');assert.ok(audit.length);await hit('GET','/admin/audit-logs/:id','/admin/audit-logs/'+audit[0].id);
+  for(const [method,path] of [['POST','/webhooks/midtrans'],['POST','/receipts/'+receipt.id+'/email']])assert.equal((await raw(method,path,{},f.admin)).status,404);
+  assert.deepEqual([...done].sort(),cases.map(r=>r.method+' '+r.path).sort());
+  assert.equal(await db.payments.count({where:{order_id:BigInt(order.id),status:'paid'}}),1);assert.equal(await db.payments.count({where:{order_id:BigInt(manualOrder.id),status:'paid'}}),1);
+ }finally{
+  await db.cafe_settings.update({where:{id:1},data:settings});for(const row of methods)await db.payment_methods.update({where:{id:row.id},data:{provider:row.provider,is_enabled:row.is_enabled}});
+  await f.cleanup();await db.auth_sessions.deleteMany({where:{user_id:{in:extra.users}}});await db.audit_logs.deleteMany({where:{user_id:{in:extra.users}}});await db.users.deleteMany({where:{id:{in:extra.users}}});
+  for(const [key,table] of [['products','products'],['categories','categories'],['registers','cash_registers'],['taxes','taxes'],['charges','service_charges'],['discounts','discounts']])await db[table].deleteMany({where:{id:{in:extra[key]}}});
+  await h.close();await rm(storageDir,{recursive:true,force:true});
+ }
+}));

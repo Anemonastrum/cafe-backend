@@ -15,7 +15,7 @@ test('p08-t2 acceptance: manual pending, controlled confirmation and authenticat
   const call=(path,body,key,session=f.cashier)=>request(f.h,{path,method:'POST',body,...session,headers:{Origin:f.config.allowedOrigin,...(key?{'Idempotency-Key':key}:{})}});
   const order=await newOrder(),path='/orders/'+order.id+'/payments/qris',key=randomUUID();
   assert.equal((await call(path,{provider:'manual'},key,{})).status,401);assert.equal((await call(path,{provider:'manual'},key,{cookie:f.cashier.cookie})).status,403);assert.equal((await call(path,{provider:'manual'},key,f.other)).status,404);
-  assert.equal((await call(path,{provider:'midtrans'},key)).status,409);
+  assert.equal((await call(path,{provider:'midtrans'},key)).status,503);
   assert.equal((await call(path,{provider:'manual',status:'paid'},key)).status,422);
   const pending=await call(path,{provider:'manual'},key);assert.equal(pending.status,201,JSON.stringify(pending.body));const p=pending.body.data;
   assert.equal(p.status,'pending');assert.equal(p.cash_received,null);assert.equal(p.amount,order.grand_total);

@@ -1,0 +1,602 @@
+[
+  {
+    "method": "POST",
+    "path": "/auth/login",
+    "access": "Public"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/refresh",
+    "access": "Authenticated via refresh credential"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/logout",
+    "access": "A/C"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/logout-all",
+    "access": "A/C"
+  },
+  {
+    "method": "GET",
+    "path": "/auth/me",
+    "access": "A/C"
+  },
+  {
+    "method": "PATCH",
+    "path": "/auth/me/password",
+    "access": "A/C"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/users",
+    "access": "A"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/users",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/users/:id",
+    "access": "A"
+  },
+  {
+    "method": "PATCH",
+    "path": "/admin/users/:id",
+    "access": "A"
+  },
+  {
+    "method": "PATCH",
+    "path": "/admin/users/:id/status",
+    "access": "A"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/users/:id/reset-password",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/users/:id/orders",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/users/:id/shifts",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/users/:id/sales-summary",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/categories",
+    "access": "A/C"
+  },
+  {
+    "method": "POST",
+    "path": "/categories",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/categories/:id",
+    "access": "A/C"
+  },
+  {
+    "method": "PATCH",
+    "path": "/categories/:id",
+    "access": "A"
+  },
+  {
+    "method": "PATCH",
+    "path": "/categories/:id/status",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/products",
+    "access": "A/C"
+  },
+  {
+    "method": "POST",
+    "path": "/products",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/products/:id",
+    "access": "A/C"
+  },
+  {
+    "method": "PATCH",
+    "path": "/products/:id",
+    "access": "A"
+  },
+  {
+    "method": "PATCH",
+    "path": "/products/:id/availability",
+    "access": "A"
+  },
+  {
+    "method": "PATCH",
+    "path": "/products/:id/promotion",
+    "access": "A"
+  },
+  {
+    "method": "POST",
+    "path": "/products/:id/image",
+    "access": "A"
+  },
+  {
+    "method": "DELETE",
+    "path": "/products/:id/image",
+    "access": "A"
+  },
+  {
+    "method": "POST",
+    "path": "/products/:id/archive",
+    "access": "A"
+  },
+  {
+    "method": "POST",
+    "path": "/products/:id/restore",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/pos/menu",
+    "access": "A/C"
+  },
+  {
+    "method": "GET",
+    "path": "/products/:productId/variant-groups",
+    "access": "A/C"
+  },
+  {
+    "method": "POST",
+    "path": "/products/:productId/variant-groups",
+    "access": "A"
+  },
+  {
+    "method": "PATCH",
+    "path": "/variant-groups/:id",
+    "access": "A"
+  },
+  {
+    "method": "DELETE",
+    "path": "/variant-groups/:id",
+    "access": "A"
+  },
+  {
+    "method": "POST",
+    "path": "/variant-groups/:id/options",
+    "access": "A"
+  },
+  {
+    "method": "PATCH",
+    "path": "/variant-options/:id",
+    "access": "A"
+  },
+  {
+    "method": "DELETE",
+    "path": "/variant-options/:id",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/products/:productId/addon-groups",
+    "access": "A/C"
+  },
+  {
+    "method": "POST",
+    "path": "/products/:productId/addon-groups",
+    "access": "A"
+  },
+  {
+    "method": "PATCH",
+    "path": "/addon-groups/:id",
+    "access": "A"
+  },
+  {
+    "method": "DELETE",
+    "path": "/addon-groups/:id",
+    "access": "A"
+  },
+  {
+    "method": "POST",
+    "path": "/addon-groups/:id/options",
+    "access": "A"
+  },
+  {
+    "method": "PATCH",
+    "path": "/addon-options/:id",
+    "access": "A"
+  },
+  {
+    "method": "DELETE",
+    "path": "/addon-options/:id",
+    "access": "A"
+  },
+  {
+    "method": "POST",
+    "path": "/orders/quote",
+    "access": "A/C"
+  },
+  {
+    "method": "GET",
+    "path": "/orders",
+    "access": "A/C"
+  },
+  {
+    "method": "POST",
+    "path": "/orders",
+    "access": "A/C"
+  },
+  {
+    "method": "GET",
+    "path": "/orders/:id",
+    "access": "A/C"
+  },
+  {
+    "method": "PATCH",
+    "path": "/orders/:id",
+    "access": "A/C"
+  },
+  {
+    "method": "POST",
+    "path": "/orders/:id/items",
+    "access": "A/C"
+  },
+  {
+    "method": "PATCH",
+    "path": "/orders/:id/items/:itemId",
+    "access": "A/C"
+  },
+  {
+    "method": "DELETE",
+    "path": "/orders/:id/items/:itemId",
+    "access": "A/C"
+  },
+  {
+    "method": "POST",
+    "path": "/orders/:id/hold",
+    "access": "A/C"
+  },
+  {
+    "method": "POST",
+    "path": "/orders/:id/resume",
+    "access": "A/C"
+  },
+  {
+    "method": "POST",
+    "path": "/orders/:id/discounts",
+    "access": "A/C (permission-gated)"
+  },
+  {
+    "method": "DELETE",
+    "path": "/orders/:id/discounts/:discountId",
+    "access": "A/C (permission-gated)"
+  },
+  {
+    "method": "PATCH",
+    "path": "/orders/:id/status",
+    "access": "A/C"
+  },
+  {
+    "method": "POST",
+    "path": "/orders/:id/cancel",
+    "access": "A/C (permission-gated)"
+  },
+  {
+    "method": "GET",
+    "path": "/orders/:id/history",
+    "access": "A/C"
+  },
+  {
+    "method": "GET",
+    "path": "/orders/active",
+    "access": "A/C"
+  },
+  {
+    "method": "GET",
+    "path": "/payment-methods",
+    "access": "A/C"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/payment-methods",
+    "access": "A"
+  },
+  {
+    "method": "PATCH",
+    "path": "/admin/payment-methods/:id",
+    "access": "A"
+  },
+  {
+    "method": "POST",
+    "path": "/orders/:orderId/payments/cash",
+    "access": "A/C"
+  },
+  {
+    "method": "POST",
+    "path": "/orders/:orderId/payments/qris",
+    "access": "A/C"
+  },
+  {
+    "method": "POST",
+    "path": "/payments/:id/confirm-manual",
+    "access": "A/C"
+  },
+  {
+    "method": "GET",
+    "path": "/payments/:id",
+    "access": "A/C"
+  },
+  {
+    "method": "GET",
+    "path": "/orders/:orderId/payments",
+    "access": "A/C"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/payments",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/payments/:id/events",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/orders/:orderId/receipt",
+    "access": "A/C"
+  },
+  {
+    "method": "GET",
+    "path": "/receipts/:id",
+    "access": "A/C"
+  },
+  {
+    "method": "GET",
+    "path": "/receipts/:id/print",
+    "access": "A/C"
+  },
+  {
+    "method": "POST",
+    "path": "/receipts/:id/reprint",
+    "access": "A/C"
+  },
+  {
+    "method": "GET",
+    "path": "/receipts/:id/pdf",
+    "access": "A/C"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/receipts/:id/events",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/cash-registers",
+    "access": "A/C"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/cash-registers",
+    "access": "A"
+  },
+  {
+    "method": "PATCH",
+    "path": "/admin/cash-registers/:id",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/cashier-shifts/current",
+    "access": "A/C"
+  },
+  {
+    "method": "POST",
+    "path": "/cashier-shifts/open",
+    "access": "A/C"
+  },
+  {
+    "method": "POST",
+    "path": "/cashier-shifts/:id/close",
+    "access": "A/C (owner/admin)"
+  },
+  {
+    "method": "GET",
+    "path": "/cashier-shifts/mine",
+    "access": "A/C"
+  },
+  {
+    "method": "GET",
+    "path": "/cashier-shifts/:id/summary",
+    "access": "A/C (owner/admin)"
+  },
+  {
+    "method": "GET",
+    "path": "/cashier-shifts/:id/orders",
+    "access": "A/C (owner/admin)"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/cashier-shifts",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/cashier-shifts/:id",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/taxes",
+    "access": "A"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/taxes",
+    "access": "A"
+  },
+  {
+    "method": "PATCH",
+    "path": "/admin/taxes/:id",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/service-charges",
+    "access": "A"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/service-charges",
+    "access": "A"
+  },
+  {
+    "method": "PATCH",
+    "path": "/admin/service-charges/:id",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/discounts",
+    "access": "A"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/discounts",
+    "access": "A"
+  },
+  {
+    "method": "PATCH",
+    "path": "/admin/discounts/:id",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/settings/public",
+    "access": "A/C"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/settings",
+    "access": "A"
+  },
+  {
+    "method": "PATCH",
+    "path": "/admin/settings",
+    "access": "A"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/settings/logo",
+    "access": "A"
+  },
+  {
+    "method": "DELETE",
+    "path": "/admin/settings/logo",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/dashboard/summary",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/dashboard/sales-trend",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/dashboard/top-products",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/dashboard/payment-breakdown",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/dashboard/recent-orders",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/dashboard/employee-activity",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/reports/sales",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/reports/payments",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/reports/products",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/reports/categories",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/reports/employees",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/reports/orders",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/reports/cancellations",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/reports/export",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/audit-logs",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/audit-logs/:id",
+    "access": "A"
+  },
+  {
+    "method": "GET",
+    "path": "/health",
+    "access": "Public (or internal-only)"
+  },
+  {
+    "method": "GET",
+    "path": "/ready",
+    "access": "Internal"
+  }
+]

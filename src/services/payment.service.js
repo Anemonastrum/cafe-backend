@@ -69,6 +69,7 @@ export async function createCashPayment(db,actor,{orderId,idempotencyKey,cash_re
 }
 
 export async function createQrisPayment(db,actor,{orderId,idempotencyKey,provider},context){
+ if(provider!=='manual')throw new AppError(503,'PROVIDER_DISABLED','Payment provider is not enabled');
  const hash=canonicalHash({operation:'payments.qris',actor:actor.id,orderId,provider});
  return withWriteTx(db,async tx=>{
   const locked=await paymentLocks(tx,actor,orderId),existing=await model.paymentByKey(tx,idempotencyKey);

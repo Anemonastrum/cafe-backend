@@ -1,0 +1,35 @@
+# nginx HTTP-context example. Replace host/certificate paths before nginx -t.
+# Single backend instance. Bind API to loopback; never expose port 3000 publicly.
+map $http_upgrade $cafe_connection { default upgrade; '' close; }
+log_format cafe '$remote_addr $request_method $uri $status $request_time';
+server {
+    listen 80;
+    server_name api.cafe.example;
+    return 301 https://api.cafe.example$request_uri;
+}
+server {
+    listen 443 ssl;
+    server_name api.cafe.example;
+    ssl_certificate /etc/letsencrypt/live/api.cafe.example/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/api.cafe.example/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    access_log /var/log/nginx/cafe-access.log cafe;
+    error_log /var/log/nginx/cafe-error.log warn;
+    client_max_body_size 6m;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Content-Security-Policy "default-src 'none'; frame-ancestors 'none'; base-uri 'none'" always;
+    # Readiness is available only through loopback/internal monitoring, not public proxy.
+    location = /api/v1/ready { return 404; }
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $cafe_connection;
+        proxy_read_timeout 75s;
+        proxy_send_timeout 75s;
+    }
+}

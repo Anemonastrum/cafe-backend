@@ -1,3 +1,4 @@
+import { toWire } from './serialize.js';
 const pending=new WeakMap();
 export function queueSignal(tx,events,name,payload,scope){if(!events?.publish)return;const list=pending.get(tx)??[];list.push({events,name,payload,scope});pending.set(tx,list);}
 export async function publishSignals(tx){for(const {events,name,payload,scope} of pending.get(tx)??[])try{await events.publish(name,payload,scope);}catch{console.error(JSON.stringify({event:'realtime_delivery_failed',name}));}pending.delete(tx);}
@@ -8,7 +9,12 @@ export function auditSignal(tx,{events,action,entityType,entityId,before,after})
   if(action==='orders.create'){name='order:created';payload={order_id:id,order_number:after.order_number,status:'pending',created_at:new Date()};}
   else if(action==='orders.status'||action==='orders.cancel'){name='order:status_changed';payload={order_id:id,from_status:before.status,to_status:after.status,timestamp:new Date()};}
   else if(action==='orders.hold'||action==='orders.resume'){name='order:held_changed';payload={order_id:id,is_held:after.is_held};}
-  else{name='order:updated';payload={order_id:id,fields:['order']};}
+  else{
+   const fields=action.startsWith('orders.item.')?['items']:action.startsWith('orders.discount.')?['discounts']:[];
+   const old=toWire(before??{}),current=toWire(after??{});
+   for(const key of ['notes','order_type','subtotal','item_discount_total','order_discount_total','tax_total','service_charge_total','grand_total'])if(key in old&&key in current&&old[key]!==current[key])fields.push(key);
+   name='order:updated';payload={order_id:id,fields};
+  }
  }else if(entityType==='payments'){
   name='payment:updated';payload={order_id:String(after.order_id),payment_id:String(entityId),status:action==='payments.paid'?'paid':action==='payments.pending'?'pending':'failed'};scope={kind:'order',id:payload.order_id};
  }else if(entityType==='cashier_shifts'){

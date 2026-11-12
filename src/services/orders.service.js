@@ -86,7 +86,7 @@ async function mutation(db,actor,id,context,action,fn,{paidPreparation=false,rep
   const changed=await fn(tx,user,order);
   if(changed!==false){
    if(reprice)await repriceOrder(tx,id);
-   await appendAudit(tx,{actor:user,action,entityType:'orders',entityId:id,before:{status:order.status,grand_total:order.grand_total,is_held:order.is_held},after:await model.orderById(tx,id),context});
+   await appendAudit(tx,{actor:user,action,entityType:'orders',entityId:id,before:order,after:await model.orderById(tx,id),context});
   }
   return getOrder(tx,user,id);
  });

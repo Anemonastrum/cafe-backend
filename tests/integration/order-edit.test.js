@@ -90,3 +90,27 @@ test('selection replacement uses current rules; quantity retains captured option
   if(tax)await db.taxes.delete({where:{id:tax.id}});if(charge)await db.service_charges.delete({where:{id:charge.id}});
  }
 }));
+
+
+test('existing-order line capture ignores current automatic charges; bodyless actions work',async()=>withDatabase(async db=>{
+ const f=await orderFixture(db);let charge;
+ try{
+  charge=await db.service_charges.create({data:{name:randomUUID(),calculation:'fixed',value:'10',is_auto_applied:true}});
+  await f.api('/cashier-shifts/open','POST',{cash_register_id:String(f.registers[0].id)},f.cashier);
+  const response=await f.api('/orders','POST',f.input,f.cashier);assert.equal(response.status,201);
+  const order=response.body.data,path='/orders/'+order.id;
+  await db.service_charges.update({where:{id:charge.id},data:{value:'999999999999.99'}});
+  const added=await f.api(path+'/items','POST',{product_id:String(f.product.id),quantity:1},f.cashier);
+  assert.equal(added.status,201,JSON.stringify(added.body));
+  assert.equal(added.body.data.service_charges.find(c=>c.service_charge_id===String(charge.id)).configured_value,'10.00');
+  const replaced=await f.api(path+'/items/'+order.items[0].id,'PATCH',{variant_option_ids:[]},f.cashier);
+  assert.equal(replaced.status,200,JSON.stringify(replaced.body));
+  const stored=await db.orders.findUnique({where:{id:BigInt(order.id)}});assert.equal(stored.grand_total.toFixed(2),replaced.body.data.grand_total);
+  for(const action of ['hold','resume'])assert.equal((await f.api(path+'/'+action,'POST',undefined,f.cashier)).status,200);
+  const discount=await f.api(path+'/discounts','POST',{name:'Manual',calculation:'fixed',value:'1'});assert.equal(discount.status,201);
+  assert.equal((await f.api(path+'/discounts/'+discount.body.data.discounts[0].id,'DELETE')).status,204);
+  assert.equal((await f.api(path+'/items/'+order.items[0].id,'DELETE',undefined,f.cashier)).status,204);
+  for(const action of ['hold','resume'])assert.equal((await f.api(path+'/'+action,'POST',{unknown:true},f.cashier)).status,422);
+  assert.equal((await f.api(path+'/items','POST',undefined,f.cashier)).status,422);
+ }finally{await f.cleanup();if(charge)await db.service_charges.delete({where:{id:charge.id}});}
+}));

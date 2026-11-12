@@ -23,7 +23,7 @@ export function orderInput(kind){return(req,res,next)=>{
   }
   if(input.from&&input.to&&(input.to<=input.from||input.to-input.from>366*86400000))invalid();req.input=input;return next();
  }
- if(Object.keys(req.query).length)invalid();const b=req.body;
+ if(Object.keys(req.query).length)invalid();const b=req.body===undefined&&['removeItem','removeDiscount','hold','resume'].includes(kind)?{}:req.body;
  if(['edit','addItem','editItem','removeItem','hold','resume','applyDiscount','removeDiscount','status','cancel'].includes(kind)){
   if(req.params.itemId!==undefined)req.childId=parseId(req.params.itemId);
   if(req.params.discountId!==undefined)req.childId=parseId(req.params.discountId);

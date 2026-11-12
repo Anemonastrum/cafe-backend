@@ -16,7 +16,7 @@ import { ownOpenShift } from '../models/shifts.model.js';
 import { nextOrderNumber } from '../helpers/order-number.helper.js';
 import { appendAudit } from './audit.service.js';
 const invalid=()=>{throw new AppError(422,'INVALID_CATALOG','Product, option or discount unavailable');};
-export async function captureQuote(tx,actor,input,now=new Date()){
+export async function captureQuote(tx,actor,input,now=new Date(),chargeRules=null){
  const settings=await model.settingsForPricing(tx),captured=[],lines=[];
  for(const [index,item] of input.items.entries()){
   const row=await model.productForPricing(tx,item.product_id);if(!row)invalid();
@@ -30,7 +30,7 @@ export async function captureQuote(tx,actor,input,now=new Date()){
  if(input.discounts.length&&actor.role!=='admin'&&!settings.cashier_can_discount)throw new AppError(403,'DISCOUNT_FORBIDDEN','Cashier discount permission required');
  const discounts=[];
  for(const {discount_id} of input.discounts){const row=await model.discountForPricing(tx,discount_id);if(!row?.is_active||(row.starts_at&&row.starts_at>now)||(row.ends_at&&row.ends_at<=now))invalid();discounts.push({key:String(row.id),id:row.id,name:row.name,calculation:row.calculation,value:row.value});}
- const charges=(await model.autoCharges(tx)).map(row=>({key:String(row.id),id:row.id,name:row.name,calculation:row.calculation,value:row.value}));
+ const charges=(chargeRules??await model.autoCharges(tx)).map(row=>({key:String(row.id),id:row.id,name:row.name,calculation:row.calculation,value:row.value}));
  return{captured,pricing:calculateQuote({lines,discounts,charges})};
 }
 export function quoteView(pricing){return{subtotal:pricing.subtotal,item_discount_total:pricing.itemDiscountTotal,order_discount_total:pricing.orderDiscountTotal,tax_total:pricing.taxTotal,service_charge_total:pricing.serviceChargeTotal,grand_total:pricing.grandTotal,lines:pricing.lines.map(line=>({...line,tax:line.tax?{...line.tax,rate:new Decimal(line.tax.rate).toFixed(4)}:null})),taxes:pricing.taxes.map(t=>({...t,rate:t.rate.toFixed(4)})),discounts:pricing.discounts,charges:pricing.charges};}
@@ -114,13 +114,13 @@ export const editOrder=(db,actor,{id,patch},context)=>mutation(db,actor,id,conte
 export const setHeld=(db,actor,{id,is_held},context)=>mutation(db,actor,id,context,is_held?'orders.hold':'orders.resume',async tx=>{const row=await model.orderById(tx,id);if(row.is_held===is_held)return false;await model.updateOrder(tx,id,{is_held});},{reprice:false});
 export const addItem=(db,actor,{id,item},context)=>mutation(db,actor,id,context,'orders.item.add',async(tx,user)=>{
  const row=await model.orderDetail(tx,id);if(row.fk_order_items_order_back.length>=100)throw new AppError(422,'INVALID_LINES','Maximum 100 order lines');
- const {captured,pricing}=await captureQuote(tx,user,{items:[item],discounts:[]});await storeCapture(tx,id,captured[0],pricing.lines[0]);
+ const {captured,pricing}=await captureQuote(tx,user,{items:[item],discounts:[]},new Date(),[]);await storeCapture(tx,id,captured[0],pricing.lines[0]);
 });
 export const editItem=(db,actor,{id,itemId,patch},context)=>mutation(db,actor,id,context,'orders.item.edit',async(tx,user)=>{
  const row=await model.orderDetail(tx,id),item=itemInOrder(row,itemId);
  if('variant_option_ids' in patch||'addons' in patch){
   const input={product_id:item.product_id,quantity:item.quantity,variant_option_ids:item.fk_item_variant_item_back.map(v=>v.variant_option_id),addons:item.fk_item_addon_item_back.map(a=>({addon_option_id:a.addon_option_id,quantity:a.quantity})),special_instructions:item.special_instructions,...patch};
-  const {captured,pricing}=await captureQuote(tx,user,{items:[input],discounts:[]});await storeCapture(tx,id,captured[0],pricing.lines[0],itemId);
+  const {captured,pricing}=await captureQuote(tx,user,{items:[input],discounts:[]},new Date(),[]);await storeCapture(tx,id,captured[0],pricing.lines[0],itemId);
  }else await model.updateItem(tx,itemId,patch);
 });
 export const removeItem=(db,actor,{id,itemId},context)=>mutation(db,actor,id,context,'orders.item.remove',async tx=>{itemInOrder(await model.orderDetail(tx,id),itemId);await model.deleteItem(tx,itemId);});

@@ -12,11 +12,15 @@ test('p10-t2 acceptance: seven reports from settled snapshots without multiplied
   const create=async()=>{const r=await f.api('/orders','POST',{...f.input,client_request_id:randomUUID(),items:[{product_id:String(f.product.id),quantity:1},{product_id:String(f.product.id),quantity:2}]},f.cashier);assert.equal(r.status,201);return r.body.data;};
   const order=await create(),cancelled=await create(),pending=await create();
   const pay=await request(f.h,{path:'/orders/'+order.id+'/payments/cash',method:'POST',body:{cash_received:'100000'},...f.cashier,headers:{Origin:f.config.allowedOrigin,'Idempotency-Key':randomUUID()}});assert.equal(pay.status,201);assert.equal(pay.body.data.amount,'75000.00');const payment=await db.payments.findUnique({where:{id:BigInt(pay.body.data.id)}}),{id,created_at,updated_at,...paymentData}=payment;
-  const boundary=new Date('2026-01-04T17:00:00Z');await db.payments.update({where:{id},data:{paid_at:boundary,created_at:boundary}});
-  await db.payments.create({data:{...paymentData,order_id:BigInt(pending.id),status:'pending',paid_at:null,cash_received:null,cash_change:null,payment_reference:'PAY-'+randomUUID(),idempotency_key:randomUUID(),created_at:boundary}});
-  await db.payments.create({data:{...paymentData,status:'failed',paid_at:null,cash_received:null,cash_change:null,payment_reference:'PAY-'+randomUUID(),idempotency_key:randomUUID(),created_at:boundary}});
+  const boundary=new Date('2026-01-04T17:00:00Z');await db.payments.update({where:{id},data:{paid_at:boundary,created_at:new Date('2025-12-01T00:00:00Z')}});
+  await db.payments.create({data:{...paymentData,order_id:BigInt(pending.id),status:'pending',paid_at:null,cash_received:null,cash_change:null,payment_reference:'PAY-'+randomUUID(),idempotency_key:randomUUID(),created_at:new Date('2026-01-03T17:00:00Z')}});
+  await db.payments.create({data:{...paymentData,status:'failed',paid_at:null,cash_received:null,cash_change:null,payment_reference:'PAY-'+randomUUID(),idempotency_key:randomUUID(),created_at:new Date('2026-01-03T17:00:00Z')}});
+  await db.payments.create({data:{...paymentData,status:'failed',paid_at:null,cash_received:null,cash_change:null,payment_reference:'PAY-'+randomUUID(),idempotency_key:randomUUID(),created_at:new Date('2026-01-06T17:00:00Z')}});
+  // Two captured inclusive groups share one paid order; joining them must not multiply revenue.
+  await db.order_taxes.updateMany({where:{order_id:BigInt(order.id)},data:{name:'Captured group A',taxable_amount:'22000',tax_amount:'2000'}});
+  await db.order_taxes.create({data:{order_id:BigInt(order.id),name:'Captured group B',rate_percent:'10',is_inclusive:true,taxable_amount:'53000',tax_amount:'4818.18'}});
   assert.equal((await f.api('/orders/'+cancelled.id+'/cancel','POST',{reason:'No refund'},f.admin)).status,200);
-  await db.orders.update({where:{id:BigInt(cancelled.id)},data:{cancelled_at:boundary}});for(const o of [order,cancelled,pending])await db.orders.update({where:{id:BigInt(o.id)},data:{created_at:boundary}});
+  await db.orders.update({where:{id:BigInt(cancelled.id)},data:{cancelled_at:boundary}});for(const o of [order,cancelled,pending])await db.orders.update({where:{id:BigInt(o.id)},data:{created_at:new Date('2026-01-03T17:00:00Z')}});
   await db.categories.update({where:{id:f.category.id},data:{name:'Renamed'}});await db.products.update({where:{id:f.product.id},data:{name:'Renamed product',base_price:'1'}});
   const range='?from=2026-01-04T00:00:00%2B07:00&to=2026-01-07T00:00:00%2B07:00',get=(name,extra='')=>f.api('/admin/reports/'+name+range+extra);
   for(const name of ['sales','payments','products','categories','employees','orders','cancellations']){const path='/admin/reports/'+name+range;assert.equal((await f.api(path,'GET',undefined,{})).status,401);assert.equal((await f.api(path,'GET',undefined,f.cashier)).status,403);assert.equal((await get(name)).status,200);assert.equal((await get(name,'&unknown=x')).status,422);assert.equal((await f.api('/admin/reports/'+name+'?from=2026-01-05T00:00:00Z&to=2026-01-04T00:00:00Z')).status,422);}
@@ -34,5 +38,7 @@ test('p10-t2 acceptance: seven reports from settled snapshots without multiplied
   for(const name of ['payments','products','categories','employees','orders','cancellations']){const empty=await f.api('/admin/reports/'+name+'?from=2026-02-01T00:00:00Z&to=2026-02-02T00:00:00Z');assert.deepEqual(empty.body.data,[]);assert.equal(empty.body.meta.total,0);}
   const edge=(await f.api('/admin/reports/sales?from=2026-01-03T17:00:00Z&to=2026-01-04T17:00:00Z')).body;assert.equal(edge.meta.totals.revenue,'0.00');
   await db.orders.update({where:{id:BigInt(order.id)},data:{item_discount_total:'1000',order_discount_total:'500',service_charge_total:'2000'}});const adjusted=(await get('sales')).body.meta.totals;assert.equal(adjusted.discounts,'1500.00');assert.equal(adjusted.service_charges,'2000.00');assert.equal(adjusted.net_sales,'66681.82');assert.equal(adjusted.revenue,'75000.00');
+  for(const name of ['products','categories'])assert.equal((await get(name)).body.data[0].revenue,'75000.00');
+  assert.equal((await f.api('/admin/reports/sales?from=9999-12-31T20:00:00Z&to=9999-12-31T23:00:00Z')).status,422);
  }finally{await f.cleanup();if(tax)await db.taxes.delete({where:{id:tax.id}});}
 }));

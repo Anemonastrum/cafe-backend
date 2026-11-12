@@ -5,6 +5,8 @@
 Core runtime verified on MariaDB 12.3.3, Node 22.23.4. MySQL runtime not verified.
 **Backup/restore rehearsals executed:** reference-only copy and separately authorized synthetic financial/media copy passed schema/row hashes and process smoke. See [reference rehearsal](restore-rehearsal.md) and [populated rehearsal](populated-restore-rehearsal.md). Synthetic copy includes cash/manual paid and pending payments, immutable receipts, cancelled order and nonempty referenced images. This closes small populated-data recovery evidence, not production capacity or operator approval. Owner selected recommended policy targets (RPO 1 hour, RTO 4 hours; retain 48 hourly/30 daily/12 monthly recovery points) and confirmed production is not provisioned. See [operational policy and release gates](release-gates.md). Production release remains BLOCKED pending offsite destination/custodian assignment, implementation and measured production/environment evidence; selecting targets does not satisfy them. Optional Midtrans/email routes remain absent; Midtrans QRIS attempts return 503, never simulated success.
 
+Midtrans partial sandbox transport/signature boundary and remaining enablement gates: [sandbox status](midtrans-sandbox.md). Transport module is inert; no provider route enabled.
+
 ## Deployment boundary
 
 One API process, loopback bind, one local media store. Rate limits and Socket.IO are process-local. Do not add replicas until shared limiter/session-aware event distribution and shared media storage are designed and tested. No refunds, inventory, cash drawers, physical printer confirmation or durable event delivery.

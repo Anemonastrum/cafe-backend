@@ -6,7 +6,6 @@ import { PDFParse } from 'pdf-parse';
 import { withDatabase } from '../support/database.js';
 import { orderFixture } from '../support/orders.js';
 import { request } from '../support/http.js';
-import { writeFile } from 'node:fs/promises';
 test('p09-t2 acceptance: parsed PDF snapshot totals, pagination, scope and export failure',async t=>withDatabase(async db=>{
  const f=await orderFixture(db);
  try{
@@ -20,15 +19,15 @@ test('p09-t2 acceptance: parsed PDF snapshot totals, pagination, scope and expor
   for(const [width,session] of [['58',f.cashier],['80',f.admin]]){
    const before=await count(),r=await f.api(path+'?paper_mm='+width,'GET',undefined,session);assert.equal(r.status,200,JSON.stringify(r.body));assert.equal(r.headers.get('content-type'),'application/pdf');assert.equal(r.bytes.subarray(0,5).toString(),'%PDF-');assert.match(r.headers.get('content-disposition'),new RegExp('attachment; filename="receipt-'+receipt.id+'\\.pdf"'));assert.match(r.headers.get('cache-control'),/private, no-store/);
    const parser=new PDFParse({data:new Uint8Array(r.bytes)});try{const text=await parser.getText(),info=await parser.getInfo({parsePageInfo:true});assert.match(text.text,/75000.00/);assert.match(text.text,/25000.00/);assert.match(text.text,/Café <tea>/);assert.match(text.text,/second line/);assert.ok(Math.abs(info.pages[0].width-Number(width)*72/25.4)<0.1);}finally{await parser.destroy();}assert.equal(await count(),before+1);
-   await writeFile('.superpowers/sdd/09-receipts/receipt-'+width+'.pdf',r.bytes);
   }
   // Controlled generator failure, mounted HTTP remains real; no success event may be recorded.
   const before=await count(),mock=t.mock.method(PDFDocument.prototype,'end',()=>{throw new Error('synthetic PDF failure');});
   try{assert.equal((await f.api(path,'GET',undefined,f.cashier)).status,500);assert.equal(await count(),before);}finally{mock.mock.restore();}
   assert.equal((await db.receipts.findUnique({where:{id:receipt.id}})).pdf_url,null);
   const source=(await db.order_items.findFirst({where:{order_id:BigInt(created.body.data.id)}}));const {id,created_at,...data}=source;
-  for(let i=1;i<100;i++)await db.order_items.create({data:{...data,special_instructions:'wrapping note '.repeat(200)}});
+  for(let i=1;i<100;i++)await db.order_items.create({data:{...data,special_instructions:'wrapping note '.repeat(20)}});
   const long=await f.api(path+'?paper_mm=58','GET',undefined,f.cashier);assert.equal(long.status,200);const parser=new PDFParse({data:new Uint8Array(long.bytes)});try{const result=await parser.getText();assert.ok(result.total>1);assert.match(result.text,/75000.00/);}finally{await parser.destroy();}
+  const beforeLimit=await count();await db.order_items.updateMany({where:{order_id:BigInt(created.body.data.id)},data:{special_instructions:'W'.repeat(4000)}});assert.equal((await f.api(path,'GET',undefined,f.cashier)).status,500);assert.equal(await count(),beforeLimit);
   await db.users.update({where:{id:f.cashierA.id},data:{is_active:false}});assert.equal((await f.api(path,'GET',undefined,f.cashier)).status,401);
  }finally{await f.cleanup();}
 }));

@@ -15,4 +15,4 @@ export function receiptLines(r){return[
  'Total: '+r.order.grand_total,'Payment: '+r.payment.method+' / '+r.payment.provider,'Reference: '+r.payment.payment_reference,'Paid: '+r.payment.paid_at,'Amount: '+r.payment.amount,
  ...(r.payment.cash_received!==null?['Tender: '+r.payment.cash_received,'Change: '+r.payment.cash_change]:[]),r.order.notes,r.footer_snapshot
  ].filter(v=>v!==null&&v!==undefined&&v!=='');}
-export function renderReceiptHtml(receipt,{paper_mm}={}){const width=paperWidth(receipt,paper_mm);if(!['58','80'].includes(width))throw new TypeError('Invalid paper width');return template.replaceAll('{{paper_mm}}',width).replace('{{content}}',receiptLines(receipt).map(l=>'<div>'+escapeHtml(l)+'</div>').join(''));}
+export function renderReceiptHtml(receipt,{paper_mm}={}){const width=paperWidth(receipt,paper_mm);if(!['58','80'].includes(width))throw new TypeError('Invalid paper width');return template.replaceAll('{{paper_mm}}',width).replace('{{content}}',()=>receiptLines(receipt).map(l=>'<div>'+escapeHtml(l)+'</div>').join(''));}

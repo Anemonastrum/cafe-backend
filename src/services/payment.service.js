@@ -15,7 +15,9 @@ import { issueReceipt } from './receipt.service.js';
 import { appendAudit } from './audit.service.js';
 const conflict=()=>{throw new AppError(409,'PAYMENT_CONFLICT','Payment state does not permit this action');};
 const notFound=()=>{throw new AppError(404,'NOT_FOUND','Not found');};
-export function paymentView(row){const {request_hash,gateway_order_id,gateway_transaction_id,gateway_status,...safe}=row;return safe;}
+export function paymentView(row){const fields=['id','order_id','shift_id','payment_method_id','payment_reference','amount','cash_received','cash_change','status','provider','processed_by_user_id','paid_at','failed_at','created_at','updated_at'];return Object.fromEntries(fields.map(k=>[k,row[k]]));}
+export function safeEventPayload(payload){const safe={};if(!payload||typeof payload!=='object'||Array.isArray(payload))return safe;for(const k of ['status','actor_id','confirming_shift_id','reason'])if(typeof payload[k]==='string'&&payload[k].length<=(k==='reason'?500:80))safe[k]=payload[k];return safe;}
+async function event(tx,{payment_id,event_type,payload}){return model.insertEvent(tx,{payment_id,event_type,payload:safeEventPayload(payload)});}
 export async function paymentLocks(tx,actor,orderId,extraShiftIds=[]){
  await lockCafe(tx);const hint=await orders.orderById(tx,orderId);if(!hint||(actor.role!=='admin'&&hint.cashier_id!==actor.id))notFound();
  const {user}=await lockedActor(tx,actor,[hint.cashier_id]),own=await ownOpenShift(tx,user.id);
@@ -49,7 +51,7 @@ export async function settlePayment(tx,{payment,order,actorId,context,confirming
  const now=new Date(),paid=await model.updatePayment(tx,payment.id,{status:'paid',paid_at:now});
  const updated=await orders.updateOrder(tx,order.id,{payment_status:'paid',paid_at:now});
  const receipt=await issueReceipt(tx,{payment:paid,order:updated,actorId});
- await model.insertEvent(tx,{payment_id:payment.id,event_type:'paid',payload:{status:'paid',actor_id:String(actorId),...(confirmingShiftId?{confirming_shift_id:String(confirmingShiftId)}:{})}});
+ await event(tx,{payment_id:payment.id,event_type:'paid',payload:{status:'paid',actor_id:String(actorId),...(confirmingShiftId?{confirming_shift_id:String(confirmingShiftId)}:{})}});
  await appendAudit(tx,{actor:{id:actorId},action:'payments.paid',entityType:'payments',entityId:payment.id,after:{order_id:order.id,amount:payment.amount,receipt_id:receipt.id,confirming_shift_id:confirmingShiftId??null},context});
  return{payment:paid,order:updated,receipt};
 }
@@ -74,7 +76,7 @@ export async function createQrisPayment(db,actor,{orderId,idempotencyKey,provide
   locked.requireOpen();const {order,user,own}=locked;await verifyCheckout(tx,order);
   const method=await model.methodByCode(tx,'qris');if(provider!=='manual'||!method?.is_enabled||method.provider!==provider)conflict();
   const payment=await model.insertPayment(tx,{order_id:order.id,shift_id:own.id,payment_method_id:method.id,payment_reference:'PAY-'+randomUUID(),idempotency_key:idempotencyKey,request_hash:hash,amount:order.grand_total,processed_by_user_id:user.id,provider});
-  await model.insertEvent(tx,{payment_id:payment.id,event_type:'pending',payload:{status:'pending',actor_id:String(user.id)}});
+  await event(tx,{payment_id:payment.id,event_type:'pending',payload:{status:'pending',actor_id:String(user.id)}});
   await appendAudit(tx,{actor:user,action:'payments.pending',entityType:'payments',entityId:payment.id,after:{order_id:order.id,amount:payment.amount},context});
   return{payment:paymentView(payment),replay:false};
  });
@@ -100,7 +102,14 @@ export async function failManualPayment(db,actor,{id,reason,expected_status},con
   const {user,payment}=await manualLocked(tx,actor,id);if(user.role!=='admin')throw new AppError(403,'FORBIDDEN','Admin required');
   if(payment.status!==expected_status)conflict();
   const failed=await model.updatePayment(tx,id,{status:'failed',failed_at:new Date()});
-  await model.insertEvent(tx,{payment_id:id,event_type:'failed',payload:{status:'failed',actor_id:String(user.id),reason}});
+  await event(tx,{payment_id:id,event_type:'failed',payload:{status:'failed',actor_id:String(user.id),reason}});
   await appendAudit(tx,{actor:user,action:'payments.fail_manual',entityType:'payments',entityId:id,before:{status:payment.status},after:{status:'failed',reason},context});return paymentView(failed);
  });
 }
+
+async function scopedPayment(db,actor,id){const row=await model.paymentById(db,id);if(!row)notFound();const order=await orders.orderById(db,row.order_id);if(!order||(actor.role!=='admin'&&order.cashier_id!==actor.id))notFound();return row;}
+export const getPayment=async(db,actor,id)=>paymentView(await scopedPayment(db,actor,id));
+const paged=(data,total,q)=>({data,meta:{page:q.page,limit:q.limit,total,total_pages:Math.ceil(total/q.limit)}});
+export async function listOrderPayments(db,actor,{orderId,query}){const order=await orders.orderById(db,orderId);if(!order||(actor.role!=='admin'&&order.cashier_id!==actor.id))notFound();const rows=await model.paymentRows(db,{...query,orderId});return paged(rows.data.map(paymentView),rows.total,query);}
+export async function listPayments(db,actor,query){if(actor.role!=='admin')throw new AppError(403,'FORBIDDEN','Admin required');const rows=await model.paymentRows(db,query);return paged(rows.data.map(paymentView),rows.total,query);}
+export async function listPaymentEvents(db,actor,{id,query}){if(actor.role!=='admin')throw new AppError(403,'FORBIDDEN','Admin required');await scopedPayment(db,actor,id);const rows=await model.eventRows(db,id,query);return paged(rows.data.map(({id,payment_id,event_type,payload,received_at})=>({id,payment_id,event_type,payload:safeEventPayload(payload),received_at})),rows.total,query);}

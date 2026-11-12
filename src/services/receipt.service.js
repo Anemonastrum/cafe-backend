@@ -30,3 +30,6 @@ export async function findOrderReceipt(db,actor,orderId){const order=await order
 export async function recordReceiptEvent(db,actor,id,action){return withWriteTx(db,async tx=>{const {user}=await lockedActor(tx,actor);const receipt=await getReceipt(tx,{...actor,role:user.role},id);await model.insertReceiptEvent(tx,{receipt_id:id,action,acted_by_user_id:user.id});return receipt;});}
 export const recordReprint=(db,actor,id)=>recordReceiptEvent(db,actor,id,'reprint');
 export async function listReceiptEvents(db,actor,id,q){if(actor.role!=='admin')throw new AppError(403,'FORBIDDEN','Admin required');await getReceipt(db,actor,id);const rows=await model.receiptEventRows(db,id,q);return toWire({data:rows.data,meta:{page:q.page,limit:q.limit,total:rows.total,total_pages:Math.ceil(rows.total/q.limit)}});}
+
+import { renderReceiptPdf } from '../integrations/pdf.js';
+export async function exportReceiptPdf(db,actor,id,options){const receipt=await getReceipt(db,actor,id);let bytes;try{bytes=await renderReceiptPdf(receipt,options);}catch{throw new AppError(500,'PDF_GENERATION_FAILED','Receipt PDF unavailable');}await recordReceiptEvent(db,actor,id,'pdf_export');return{bytes,filename:'receipt-'+id+'.pdf',contentType:'application/pdf'};}

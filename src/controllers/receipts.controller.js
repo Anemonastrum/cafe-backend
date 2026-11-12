@@ -3,6 +3,7 @@ import { renderReceiptHtml } from '../helpers/receipt.helper.js';
 const noStore=res=>res.set('Cache-Control','private, no-store');
 const html=(res,receipt,options)=>noStore(res).set('Content-Security-Policy',"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'").type('html').send(renderReceiptHtml(receipt,options));
 export const receiptsController=db=>({
+ pdf:async(req,res)=>{const result=await receipts.exportReceiptPdf(db,req.actor,req.entityId,req.input);noStore(res).set('Content-Disposition','attachment; filename="'+result.filename+'"').type(result.contentType).send(result.bytes);},
  get:async(req,res)=>noStore(res).json({data:await receipts.getReceipt(db,req.actor,req.entityId)}),
  order:async(req,res)=>noStore(res).json({data:await receipts.findOrderReceipt(db,req.actor,req.entityId)}),
  print:async(req,res)=>html(res,await receipts.recordReceiptEvent(db,req.actor,req.entityId,'print'),req.input),

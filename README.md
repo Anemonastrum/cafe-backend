@@ -4,7 +4,7 @@ Backend for a cafe point-of-sale (POS) system, built with Node.js and Express 5 
 
 ## Current status
 
-P01 foundation: testable Express app, validated environment, request/error envelopes, public liveness, protected DB readiness, Prisma Client with MariaDB adapter, native test harness and transaction helpers. P02 adds cookie authentication, session rotation/revocation, CSRF, password change and first-admin bootstrap. P03 adds employee administration, cafe settings/logo uploads, pricing-rule configuration and payment-method configuration. P04 adds categories, product lifecycle/promotions/images and the filtered POS menu. P05 adds variant/add-on configuration and pure selection validation. P06 adds register management, atomic shift opening/closure, histories and sales summaries. Orders, payments and reporting endpoints remain future phases. Initial migration covers users, catalog, shifts, orders, payments, receipts and audit logs. Runtime verified against MariaDB 12.3.3; MySQL 8.0.16+ remains the schema target, not a claim of MySQL runtime testing.
+P01 foundation: testable Express app, validated environment, request/error envelopes, public liveness, protected DB readiness, Prisma Client with MariaDB adapter, native test harness and transaction helpers. P02 adds cookie authentication, session rotation/revocation, CSRF, password change and first-admin bootstrap. P03 adds employee administration, cafe settings/logo uploads, pricing-rule configuration and payment-method configuration. P04 adds categories, product lifecycle/promotions/images and the filtered POS menu. P05 adds variant/add-on configuration and pure selection validation. P06 adds register management, atomic shift opening/closure, histories and sales summaries. P07a adds Decimal-priced quotes, idempotent order creation and scoped reads. Order editing/lifecycle, payments and reporting endpoints remain future phases. Initial migration covers users, catalog, shifts, orders, payments, receipts and audit logs. Runtime verified against MariaDB 12.3.3; MySQL 8.0.16+ remains the schema target, not a claim of MySQL runtime testing.
 
 ## Requirements
 
@@ -114,7 +114,15 @@ Product promotion updates merge current state, enforce promo price <= base and v
 
 `GET /cashier-shifts/current` returns own open shift or null. Close is owner/admin only, blocked by noncancelled unpaid originating orders or pending payments. Paid unfinished preparation does not block closure. Repeated close retains original time, closer and notes. No cash drawer fields.
 
-Own/admin shift histories support status/time filters, pagination and admin cashier/register filters. Owner/admin summaries count paid payment amounts attributed to payments.shift_id, never cash tender; method breakdown and duration included. Shift order lists use orders.shift_id. Cross-cashier reads/actions return 404. Close-versus-write ordering verified through shared SQL primitives; mounted order/payment writers arrive in P07/P08.
+Own/admin shift histories support status/time filters, pagination and admin cashier/register filters. Owner/admin summaries count paid payment amounts attributed to payments.shift_id, never cash tender; method breakdown and duration included. Shift order lists use orders.shift_id. Cross-cashier reads/actions return 404. Close-versus-order-create ordering verified through mounted routes in P07a; mounted payment writer checks remain for P08.
+
+### Pricing and order creation
+
+`POST /orders/quote` requires authentication/CSRF but no shift. `POST /orders` additionally requires own open shift, including admins. Input: order_type, notes, items with product_id/quantity/variant_option_ids/addons/special_instructions; optional configured discounts as `{discount_id}`. Creation also requires UUID client_request_id. Server captures current catalog, promotions, taxes and automatic charges; client totals/actor IDs rejected.
+
+Money stays Decimal with half-up cent rounding. Promotion reduces base only; ordered discounts use cent-exact largest-remainder allocation. Inclusive tax extracted, exclusive tax added; auto charges use post-discount subtotal and are not taxed. Stored line pricing_snapshot v1 preserves tax, promotion and allocated discount. Initial migration stays unchanged; deploy forward order-contract migration before running this version.
+
+Same actor/key/normalized payload replays original order with HTTP 200, including after shift closure/catalog changes; first creation returns 201. Changed payload or different actor returns 409. Order numbering, snapshots, children and audit commit atomically. `GET /orders`, `/orders/:id`, `/orders/active` scope cashiers to own orders; active queue is oldest-first pending/preparing/ready, excludes held. List filters support status/payment_status/order_type/is_held/from/to/search with pagination.
 
 ### First admin bootstrap
 

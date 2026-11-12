@@ -1,8 +1,18 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { calculateQuote } from '../../src/services/pricing.service.js';
-import { money } from '../../src/utils/money.js';
+import { money,Decimal } from '../../src/utils/money.js';
+import { quoteView } from '../../src/services/orders.service.js';
+import { toWire } from '../../src/utils/serialize.js';
 import { canonicalHash } from '../../src/utils/idempotency.js';
+test('quote line and grouped tax rates retain four decimals on wire',()=>{
+ const pricing=calculateQuote({lines:[line('taxed','100',{id:1n,name:'VAT',rate:new Decimal('7.1250'),inclusive:false}),line('untaxed','10')]});
+ const wire=toWire(quoteView(pricing));
+ assert.equal(wire.lines[0].tax.rate,'7.1250');
+ assert.equal(wire.taxes[0].rate,'7.1250');
+ assert.equal(wire.lines[1].tax,null);
+ assert.equal(wire.grand_total,'117.13');
+});
 const line=(key,base,tax=null)=>({key,quantity:1,base,variantTotal:'0',addonTotal:'0',promoReduction:'0',tax});
 test('exclusive/inclusive pricing and staged discounts preserve exact totals',()=>{
  const exclusive=calculateQuote({lines:[{...line('a','100000',{id:1n,name:'VAT',rate:'10',inclusive:false}),promoReduction:'20000'}],discounts:[{key:'d',name:'Ten',calculation:'percent',value:'10'}],charges:[{key:'c',name:'Service',calculation:'fixed',value:'12800'}]});

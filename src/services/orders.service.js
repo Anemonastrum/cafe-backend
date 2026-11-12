@@ -31,7 +31,7 @@ export async function captureQuote(tx,actor,input,now=new Date()){
  const charges=(await model.autoCharges(tx)).map(row=>({key:String(row.id),id:row.id,name:row.name,calculation:row.calculation,value:row.value}));
  return{captured,pricing:calculateQuote({lines,discounts,charges})};
 }
-export function quoteView(pricing){return{subtotal:pricing.subtotal,item_discount_total:pricing.itemDiscountTotal,order_discount_total:pricing.orderDiscountTotal,tax_total:pricing.taxTotal,service_charge_total:pricing.serviceChargeTotal,grand_total:pricing.grandTotal,lines:pricing.lines,taxes:pricing.taxes.map(t=>({...t,rate:t.rate.toFixed(4)})),discounts:pricing.discounts,charges:pricing.charges};}
+export function quoteView(pricing){return{subtotal:pricing.subtotal,item_discount_total:pricing.itemDiscountTotal,order_discount_total:pricing.orderDiscountTotal,tax_total:pricing.taxTotal,service_charge_total:pricing.serviceChargeTotal,grand_total:pricing.grandTotal,lines:pricing.lines.map(line=>({...line,tax:line.tax?{...line.tax,rate:new Decimal(line.tax.rate).toFixed(4)}:null})),taxes:pricing.taxes.map(t=>({...t,rate:t.rate.toFixed(4)})),discounts:pricing.discounts,charges:pricing.charges};}
 export async function quoteOrder(db,actor,input){return db.$transaction(async tx=>quoteView((await captureQuote(tx,actor,input)).pricing),{isolationLevel:'RepeatableRead'});}
 function scoped(actor,row){if(!row||(actor.role!=='admin'&&row.cashier_id!==actor.id))throw new AppError(404,'NOT_FOUND','Not found');return row;}
 function orderView(row){

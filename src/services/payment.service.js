@@ -65,3 +65,42 @@ export async function createCashPayment(db,actor,{orderId,idempotencyKey,cash_re
   const settled=await settlePayment(tx,{payment,order,actorId:user.id,context});return{payment:paymentView(settled.payment),replay:false};
  });
 }
+
+export async function createQrisPayment(db,actor,{orderId,idempotencyKey,provider},context){
+ const hash=canonicalHash({operation:'payments.qris',actor:actor.id,orderId,provider});
+ return withWriteTx(db,async tx=>{
+  const locked=await paymentLocks(tx,actor,orderId),existing=await model.paymentByKey(tx,idempotencyKey);
+  if(existing){if(existing.processed_by_user_id!==locked.user.id||existing.order_id!==orderId||existing.request_hash!==hash)throw new AppError(409,'IDEMPOTENCY_CONFLICT','Request key already used');return{payment:paymentView(existing),replay:true};}
+  locked.requireOpen();const {order,user,own}=locked;await verifyCheckout(tx,order);
+  const method=await model.methodByCode(tx,'qris');if(provider!=='manual'||!method?.is_enabled||method.provider!==provider)conflict();
+  const payment=await model.insertPayment(tx,{order_id:order.id,shift_id:own.id,payment_method_id:method.id,payment_reference:'PAY-'+randomUUID(),idempotency_key:idempotencyKey,request_hash:hash,amount:order.grand_total,processed_by_user_id:user.id,provider});
+  await model.insertEvent(tx,{payment_id:payment.id,event_type:'pending',payload:{status:'pending',actor_id:String(user.id)}});
+  await appendAudit(tx,{actor:user,action:'payments.pending',entityType:'payments',entityId:payment.id,after:{order_id:order.id,amount:payment.amount},context});
+  return{payment:paymentView(payment),replay:false};
+ });
+}
+async function manualLocked(tx,actor,id){
+ await lockCafe(tx);const hint=await model.paymentById(tx,id);if(!hint)notFound();
+ const locked=await paymentLocks(tx,actor,hint.order_id,hint.shift_id?[hint.shift_id]:[]),payment=await model.lockPayment(tx,id);
+ const method=await model.methodByCode(tx,'qris');if(payment.provider!=='manual'||payment.payment_method_id!==method?.id)conflict();
+ return{...locked,payment};
+}
+export async function confirmManual(db,actor,{id},context){
+ return withWriteTx(db,async tx=>{
+  const locked=await manualLocked(tx,actor,id),{payment,order,user,own}=locked;
+  if(payment.status==='paid')return paymentView(payment);
+  if(payment.status!=='pending')conflict();locked.requireOpen();
+  await verifyCheckout(tx,order,{allowPendingId:payment.id});
+  const settled=await settlePayment(tx,{payment,order,actorId:user.id,confirmingShiftId:own.id,context});return paymentView(settled.payment);
+ });
+}
+export async function failManualPayment(db,actor,{id,reason,expected_status},context){
+ if(expected_status!=='pending'||typeof reason!=='string'||!reason.trim()||[...reason].length>500)throw new AppError(422,'INVALID_RECOVERY','Pending status and nonempty reason required');
+ return withWriteTx(db,async tx=>{
+  const {user,payment}=await manualLocked(tx,actor,id);if(user.role!=='admin')throw new AppError(403,'FORBIDDEN','Admin required');
+  if(payment.status!==expected_status)conflict();
+  const failed=await model.updatePayment(tx,id,{status:'failed',failed_at:new Date()});
+  await model.insertEvent(tx,{payment_id:id,event_type:'failed',payload:{status:'failed',actor_id:String(user.id),reason}});
+  await appendAudit(tx,{actor:user,action:'payments.fail_manual',entityType:'payments',entityId:id,before:{status:payment.status},after:{status:'failed',reason},context});return paymentView(failed);
+ });
+}

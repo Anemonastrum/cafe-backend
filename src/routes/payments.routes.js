@@ -5,5 +5,7 @@ import { csrf } from '../middlewares/csrf.js';
 import { paymentInput } from '../validators/payments.validator.js';
 import { paymentsController } from '../controllers/payments.controller.js';
 export function paymentsRoutes({db,config}){const r=Router(),auth=authenticate(db,config),roles=authorize('admin','cashier'),c=paymentsController(db);
+ r.post('/orders/:orderId/payments/qris',auth,roles,csrf(config),paymentInput('qris'),c.qris);
+ r.post('/payments/:id/confirm-manual',auth,roles,csrf(config),paymentInput('confirm'),c.confirm);
  r.post('/orders/:orderId/payments/cash',auth,roles,csrf(config),paymentInput('cash'),c.cash);return r;
 }

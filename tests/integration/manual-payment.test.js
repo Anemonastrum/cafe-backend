@@ -1,0 +1,47 @@
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { spawn } from 'node:child_process';
+import { test } from 'node:test';
+import { withDatabase,testDatabaseConfig } from '../support/database.js';
+import { orderFixture } from '../support/orders.js';
+import { request } from '../support/http.js';
+const cli=(body,args=[])=>new Promise(resolve=>{const p=spawn(process.execPath,['scripts/resolve-manual-payment.mjs',...args],{env:{...process.env,DATABASE_URL:testDatabaseConfig().databaseUrl},stdio:['pipe','pipe','pipe']});let text='';p.stdout.on('data',c=>text+=c);p.stderr.on('data',c=>text+=c);p.on('close',code=>resolve({code,text}));p.stdin.end(JSON.stringify(body));});
+test('p08-t2 acceptance: manual pending, controlled confirmation and authenticated recovery CLI',async()=>withDatabase(async db=>{
+ const f=await orderFixture(db);const method=await db.payment_methods.findUnique({where:{code:'qris'}});
+ try{
+  await db.payment_methods.update({where:{id:method.id},data:{is_enabled:true,provider:'manual'}});
+  const shift=(await f.api('/cashier-shifts/open','POST',{cash_register_id:String(f.registers[0].id)},f.cashier)).body.data;
+  const newOrder=async()=>{const r=await f.api('/orders','POST',{...f.input,client_request_id:randomUUID()},f.cashier);assert.equal(r.status,201);return r.body.data;};
+  const call=(path,body,key,session=f.cashier)=>request(f.h,{path,method:'POST',body,...session,headers:{Origin:f.config.allowedOrigin,...(key?{'Idempotency-Key':key}:{})}});
+  const order=await newOrder(),path='/orders/'+order.id+'/payments/qris',key=randomUUID();
+  assert.equal((await call(path,{provider:'manual'},key,{})).status,401);assert.equal((await call(path,{provider:'manual'},key,{cookie:f.cashier.cookie})).status,403);assert.equal((await call(path,{provider:'manual'},key,f.other)).status,404);
+  assert.equal((await call(path,{provider:'midtrans'},key)).status,409);
+  assert.equal((await call(path,{provider:'manual',status:'paid'},key)).status,422);
+  const pending=await call(path,{provider:'manual'},key);assert.equal(pending.status,201,JSON.stringify(pending.body));const p=pending.body.data;
+  assert.equal(p.status,'pending');assert.equal(p.cash_received,null);assert.equal(p.amount,order.grand_total);
+  assert.equal(await db.receipts.count({where:{payment_id:BigInt(p.id)}}),0);
+  assert.equal((await call(path,{provider:'manual'},key)).status,200);assert.equal((await call(path,{provider:'manual'},randomUUID())).status,409);
+  assert.equal((await f.api('/orders/'+order.id,'PATCH',{notes:'frozen'},f.cashier)).status,409);assert.equal((await f.api('/orders/'+order.id+'/cancel','POST',{reason:'pending'})).status,409);
+  assert.equal((await f.api('/cashier-shifts/'+shift.id+'/close','POST',{},f.cashier)).status,409);
+  const confirm='/payments/'+p.id+'/confirm-manual';
+  assert.equal((await call(confirm,undefined,null,{})).status,401);assert.equal((await call(confirm,undefined,null,{cookie:f.cashier.cookie})).status,403);assert.equal((await call(confirm,undefined,null,f.other)).status,404);
+  assert.equal((await call(confirm,{paid_at:new Date().toISOString()},null)).status,422);
+  assert.equal((await call(confirm,undefined,null,f.admin)).status,409);
+  const adminShift=(await f.api('/cashier-shifts/open','POST',{cash_register_id:String(f.registers[1].id)})).body.data;
+  const paid=await call(confirm,undefined,null,f.admin);assert.equal(paid.status,200,JSON.stringify(paid.body));assert.equal(paid.body.data.status,'paid');assert.equal(paid.body.data.shift_id,p.shift_id);assert.equal(paid.body.data.processed_by_user_id,p.processed_by_user_id);
+  const event=await db.payment_events.findFirst({where:{payment_id:BigInt(p.id),event_type:'paid'}});assert.equal(event.payload.actor_id,String(f.adminA.id));assert.equal(event.payload.confirming_shift_id,adminShift.id);
+  assert.equal((await call(confirm,undefined,null,f.admin)).status,200);assert.equal(await db.receipts.count({where:{payment_id:BigInt(p.id)}}),1);
+  const failedOrder=await newOrder(),failedPath='/orders/'+failedOrder.id+'/payments/qris',failedKey=randomUUID(),attempt=(await call(failedPath,{provider:'manual'},failedKey)).body.data;
+  const credentials={username:f.adminA.username,password:f.password,id:attempt.id,reason:'No transfer received',expected_status:'pending'};
+  assert.equal((await cli({...credentials,password:'wrong'})).code,1);
+  assert.equal((await cli(credentials,['--password=forbidden'])).code,1);
+  const resolved=await cli(credentials);assert.equal(resolved.code,0,resolved.text);
+  assert.equal((await db.payments.findUnique({where:{id:BigInt(attempt.id)}})).status,'failed');
+  assert.equal((await call(failedPath,{provider:'manual'},failedKey)).body.data.status,'failed');
+  const replacement=await call(failedPath,{provider:'manual'},randomUUID());assert.equal(replacement.status,201);
+  assert.equal((await cli({...credentials,id:p.id})).code,1);assert.equal((await db.payments.findUnique({where:{id:BigInt(p.id)}})).status,'paid');
+  assert.equal((await call('/payments/'+replacement.body.data.id+'/confirm-manual',undefined,null)).status,200);
+  const bad=await newOrder(),mid=(await call('/orders/'+bad.id+'/payments/qris',{provider:'manual'},randomUUID())).body.data;
+  await db.payments.update({where:{id:BigInt(mid.id)},data:{provider:'midtrans'}});assert.equal((await call('/payments/'+mid.id+'/confirm-manual',undefined,null)).status,409);
+ }finally{await f.cleanup();await db.payment_methods.update({where:{id:method.id},data:{is_enabled:method.is_enabled,provider:method.provider}});}
+}));

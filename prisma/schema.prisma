@@ -550,6 +550,7 @@ model payments {
   payment_method_id             BigInt            @db.UnsignedBigInt
   payment_reference             String            @db.VarChar(80)
   idempotency_key               String            @db.VarChar(120)
+  request_hash                  String?           @db.Char(64)
   amount                        Decimal           @db.Decimal(14, 2)
   cash_received                 Decimal?          @db.Decimal(14, 2)
   cash_change                   Decimal?          @db.Decimal(14, 2)
@@ -598,6 +599,7 @@ model receipts {
   payment_id                    BigInt                   @db.UnsignedBigInt
   receipt_number                String                   @db.VarChar(80)
   cafe_name_snapshot            String                   @db.VarChar(180)
+  cashier_name_snapshot         String?                  @db.VarChar(150)
   cafe_address_snapshot         String?                  @db.Text
   cafe_phone_snapshot           String?                  @db.VarChar(50)
   currency_snapshot             String                   @default("IDR") @db.Char(3)

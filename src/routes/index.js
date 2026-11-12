@@ -7,6 +7,7 @@ import { productsRoutes } from './products.routes.js';
 import { variantsRoutes } from './variants.routes.js';
 import { addonsRoutes } from './addons.routes.js';
 import { shiftsRoutes } from './shifts.routes.js';
+import { paymentsRoutes } from './payments.routes.js';
 import { ordersRoutes } from './orders.routes.js';
 import { settingsRoutes } from './settings.routes.js';
 import { pricingRulesRoutes } from './pricing-rules.routes.js';
@@ -23,6 +24,7 @@ export function apiRoutes(dependencies) {
   router.use(addonsRoutes(dependencies));
   router.use(shiftsRoutes(dependencies));
   router.use(ordersRoutes(dependencies));
+  router.use(paymentsRoutes(dependencies));
   router.use(pricingRulesRoutes(dependencies));
   router.use(paymentMethodsRoutes(dependencies));
   return router;

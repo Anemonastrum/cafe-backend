@@ -34,7 +34,7 @@ export async function shiftFixture(db){
  const admin=await loginAs(h,f.adminA.username,f.password),cashier=await loginAs(h,f.cashierA.username,f.password),other=await loginAs(h,f.cashierB.username,f.password);
  const api=(path,method='GET',body,session=admin)=>request(h,{path,method,body,...session,headers:{Origin:config.allowedOrigin}});
  const actor=async(user,login)=>{const tokenHash=sessionDigest(login.cookie.split('=')[1]),session=await db.auth_sessions.findUnique({where:{token_hash:tokenHash}});return{id:user.id,role:user.role,sessionId:session.id,tokenHash};};
- return{...f,registers,admin,cashier,other,api,actor,async cleanup(){
+ return{...f,h,config,registers,admin,cashier,other,api,actor,async cleanup(){
   await db.cashier_shifts.deleteMany({where:{cash_register_id:{in:registers.map(r=>r.id)}}});
   await db.cash_registers.deleteMany({where:{id:{in:registers.map(r=>r.id)}}});await h.close();await f.cleanup();
  }};

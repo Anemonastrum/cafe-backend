@@ -8,6 +8,8 @@ export async function orderFixture(db){
  const normalized={...input,notes:null,discounts:[],items:[{product_id:product.id,quantity:2,variant_option_ids:[],addons:[],special_instructions:null}]};
  return{...f,product,category,input,normalized,async cleanup(){
   const orders=await db.orders.findMany({where:{cashier_id:{in:[f.adminA.id,f.adminB.id,f.cashierA.id,f.cashierB.id]}}}),order_id={in:orders.map(o=>o.id)};
+  const payments=await db.payments.findMany({where:{order_id}}),payment_id={in:payments.map(p=>p.id)};
+  const receipts=await db.receipts.findMany({where:{payment_id}});await db.receipt_events.deleteMany({where:{receipt_id:{in:receipts.map(r=>r.id)}}});await db.receipts.deleteMany({where:{payment_id}});await db.payment_events.deleteMany({where:{payment_id}});await db.payments.deleteMany({where:{order_id}});
   const items=await db.order_items.findMany({where:{order_id}}),order_item_id={in:items.map(i=>i.id)};
   await db.order_item_variants.deleteMany({where:{order_item_id}});await db.order_item_addons.deleteMany({where:{order_item_id}});
   await db.order_items.deleteMany({where:{order_id}});

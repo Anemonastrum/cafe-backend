@@ -91,7 +91,7 @@ async function mutation(db,actor,id,context,action,fn,{paidPreparation=false,rep
   return getOrder(tx,user,id);
  });
 }
-function snapshotLine(item){
+export function snapshotLine(item){
  const s=item.pricing_snapshot;
  if(!s||s.version!==1||typeof s.promo_reduction!=='string'||typeof s.order_discount!=='string'||(s.tax!==null&&(!s.tax||typeof s.tax.id!=='string'||typeof s.tax.name!=='string'||typeof s.tax.rate!=='string'||typeof s.tax.inclusive!=='boolean')))throw new AppError(409,'INVALID_SNAPSHOT','Captured pricing snapshot required');
  return{key:String(item.id).padStart(20,'0'),quantity:item.quantity,base:item.base_unit_price,variantTotal:item.variant_unit_total,addonTotal:item.addon_unit_total,promoReduction:money(s.promo_reduction),tax:s.tax?{...s.tax,id:BigInt(s.tax.id),rate:new Decimal(s.tax.rate)}:null};

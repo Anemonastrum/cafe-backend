@@ -3,7 +3,7 @@
 ## Release state
 
 Core runtime verified on MariaDB 12.3.3, Node 22.23.4. MySQL runtime not verified.
-**Operational release gate BLOCKED:** no authorized separate restore target or real backup/restore rehearsal evidence. This runbook is not proof of production readiness. No backup/reset/restore was run by this phase. Optional Midtrans/email routes remain absent; Midtrans QRIS attempts return 503, never simulated success.
+**Backup/restore rehearsal executed:** authorized development source copied into separate empty target; schema/row hashes and process smoke passed. See [rehearsal evidence](restore-rehearsal.md). Source contained reference/migration data only, no orders/payments/receipts/media: populated financial/media recovery remains unverified. Production release remains BLOCKED pending those checks, retention/RPO/RTO sign-off and environment-specific deployment gates. Optional Midtrans/email routes remain absent; Midtrans QRIS attempts return 503, never simulated success.
 
 ## Deployment boundary
 
@@ -36,4 +36,4 @@ Do not run these steps until owner names source, disposable target, backup desti
 
 ## Verification evidence location
 
-Tracked tests: core-endpoints.json independent 120-route inventory and endpoint-matrix.test.js mounted successes/auth/admin/owner/CSRF; realtime.test.js eight signals/live session changes/rollback/shutdown; financial-races.test.js repeats ordered regressions; server.test.js real process startup/readiness/SIGTERM. Ignored phase logs/checkpoint retain exact commands/counts separately. These do not verify production TLS, nginx syntax, privileges, backup/restore, multi-instance delivery or load capacity.
+Tracked tests: core-endpoints.json independent 120-route inventory and endpoint-matrix.test.js mounted successes/auth/admin/owner/CSRF; realtime.test.js eight signals/live session changes/rollback/shutdown; financial-races.test.js repeats ordered regressions; server.test.js real process startup/readiness/SIGTERM. Ignored phase logs/checkpoint retain exact commands/counts separately. These do not verify production TLS, nginx syntax, privileges, populated financial/media recovery, multi-instance delivery or load capacity. `ops/verify-restore.mjs` compares distinct databases read-only: exact DDL/data hashes, migrations, constraints and financial invariants. Supply RESTORE_SOURCE_URL/RESTORE_TARGET_URL through private environment; never CLI credentials. It assumes quiescent source and an in-memory-sized rehearsal, does not perform backup/restore or grant authorization, and requires different schema names even when hostnames differ (prevents same-schema host-alias comparisons). JSON is read as raw text to preserve large numbers and lexical differences. Use authorized isolated targets only; do not run fixture suites against production.

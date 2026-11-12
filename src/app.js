@@ -6,6 +6,7 @@ import { AppError } from './utils/errors.js';
 import { cors } from './middlewares/csrf.js';
 export function createApp({ db, config, events }) {
   const app = express();
+  app.locals.events=events;
   app.disable('x-powered-by');
   app.set('trust proxy', config.trustProxy);
   app.use((req, res, next) => {

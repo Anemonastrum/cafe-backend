@@ -103,7 +103,7 @@ export async function failManualPayment(db,actor,{id,reason,expected_status},con
   if(payment.status!==expected_status)conflict();
   const failed=await model.updatePayment(tx,id,{status:'failed',failed_at:new Date()});
   await event(tx,{payment_id:id,event_type:'failed',payload:{status:'failed',actor_id:String(user.id),reason}});
-  await appendAudit(tx,{actor:user,action:'payments.fail_manual',entityType:'payments',entityId:id,before:{status:payment.status},after:{status:'failed',reason},context});return paymentView(failed);
+  await appendAudit(tx,{actor:user,action:'payments.fail_manual',entityType:'payments',entityId:id,before:{status:payment.status},after:{order_id:payment.order_id,status:'failed',reason},context});return paymentView(failed);
  });
 }
 

@@ -6,11 +6,13 @@ function sanitize(value) {
     .filter(([key]) => !/password|secret|token|cookie|authorization/i.test(key)).map(([k, v]) => [k, sanitize(v)]));
   return value;
 }
-export function appendAudit(tx, { actor, action, entityType, entityId, before, after, context = {} }) {
-  return insertAudit(tx, { user_id: actor?.id ?? null, action, entity_type: entityType,
+import { auditSignal } from '../utils/signals.js';
+export async function appendAudit(tx, { actor, action, entityType, entityId, before, after, context = {} }) {
+  await insertAudit(tx, { user_id: actor?.id ?? null, action, entity_type: entityType,
     entity_id: entityId == null ? null : String(entityId), ip_address: context.ip ?? null,
     ...(before == null ? {} : { before_data: sanitize(toWire(before)) }),
     ...(after == null ? {} : { after_data: sanitize(toWire(after)) }) });
+  auditSignal(tx,{events:context.events,action,entityType,entityId,before,after});
 }
 
 import { auditRows,auditById } from '../models/audit.model.js';

@@ -1,3 +1,5 @@
+import { createServer } from 'node:http';
+import { createRealtime } from './realtime/index.js';
 import { createApp } from './app.js';
 import { loadConfig } from './configs/env.js';
 import { createDatabase } from './configs/database.js';
@@ -7,22 +9,24 @@ try {
   const config = loadConfig();
   db = createDatabase(config);
   await db.$connect();
-  const server = createApp({ db, config }).listen(config.port, config.host, () => {
+  const events={},server=createServer(createApp({db,config,events})),realtime=createRealtime(server,{db,config});Object.assign(events,realtime);
+  server.listen(config.port, config.host, () => {
     console.log(`Server listening on port ${config.port}`);
   });
   let stopping = false;
-  const shutdown = () => {
+  const shutdown = async () => {
     if (stopping) return;
     stopping = true;
     const deadline = setTimeout(() => process.exit(1), 10000);
     deadline.unref();
-    server.close(async error => {
+    await realtime.close();
+    const finish=async error=>{
       try { await db.$disconnect(); }
       catch { process.exitCode = 1; }
-      if (error) process.exitCode = 1;
+      if (error&&error.code!=='ERR_SERVER_NOT_RUNNING') process.exitCode = 1;
       clearTimeout(deadline);
-    });
-    server.closeIdleConnections();
+    };
+    if(server.listening){server.close(finish);server.closeIdleConnections();}else await finish();
   };
   for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, shutdown);
   server.once('error', async () => {

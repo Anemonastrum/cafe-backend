@@ -14,7 +14,7 @@ function allocate(amount,bases,keys){
  return cents.map(v=>v.div(100));
 }
 export function calculateQuote({lines,discounts=[],charges=[]}){
- if(!Array.isArray(lines)||!lines.length||lines.length>100)throw new AppError(422,'INVALID_LINES','Expected 1 to 100 lines');
+ if(!Array.isArray(lines)||lines.length>100)throw new AppError(422,'INVALID_LINES','Expected 0 to 100 lines');
  const priced=lines.map(line=>{
   if(!Number.isInteger(line.quantity)||line.quantity<1||line.quantity>999)invalidMoney();
   const base=boundedMoney(line.base),variant=new Decimal(line.variantTotal),addon=boundedMoney(line.addonTotal),promo=boundedMoney(line.promoReduction);

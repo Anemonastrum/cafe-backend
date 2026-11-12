@@ -29,3 +29,14 @@ export const insertDiscount=(tx,data)=>tx.order_discounts.create({data});
 export const insertTax=(tx,data)=>tx.order_taxes.create({data});
 export const insertCharge=(tx,data)=>tx.order_service_charges.create({data});
 export const insertInitialHistory=(tx,data)=>tx.order_status_history.create({data});
+export const pendingAttempt=(tx,order_id)=>tx.payments.findFirst({where:{order_id,status:'pending'}});
+export const updateOrder=(tx,id,data)=>tx.orders.update({where:{id},data});
+export const updateItem=(tx,id,data)=>tx.order_items.update({where:{id},data});
+export async function clearItemSelections(tx,id){await tx.order_item_variants.deleteMany({where:{order_item_id:id}});await tx.order_item_addons.deleteMany({where:{order_item_id:id}});}
+export async function deleteItem(tx,id){await clearItemSelections(tx,id);await tx.order_items.delete({where:{id}});}
+export const deleteDiscount=(tx,id)=>tx.order_discounts.delete({where:{id}});
+export const updateDiscount=(tx,id,data)=>tx.order_discounts.update({where:{id},data});
+export const updateCharge=(tx,id,data)=>tx.order_service_charges.update({where:{id},data});
+export const clearTaxes=(tx,order_id)=>tx.order_taxes.deleteMany({where:{order_id}});
+export const updateItemAddon=(tx,id,data)=>tx.order_item_addons.update({where:{id},data});
+export const historyRows=(tx,order_id)=>tx.order_status_history.findMany({where:{order_id},orderBy:{id:'asc'}});

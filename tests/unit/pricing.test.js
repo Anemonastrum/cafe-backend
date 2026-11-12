@@ -13,6 +13,10 @@ test('quote line and grouped tax rates retain four decimals on wire',()=>{
  assert.equal(wire.lines[1].tax,null);
  assert.equal(wire.grand_total,'117.13');
 });
+test('empty draft repricing keeps captured fixed charge and zero merchandise',()=>{
+ const result=calculateQuote({lines:[],discounts:[{key:'d',name:'Fixed',calculation:'fixed',value:'100'}],charges:[{key:'c',name:'Service',calculation:'fixed',value:'10'}]});
+ assert.equal(result.subtotal.toFixed(2),'0.00');assert.equal(result.discounts[0].amount.toFixed(2),'0.00');assert.equal(result.grandTotal.toFixed(2),'10.00');
+});
 const line=(key,base,tax=null)=>({key,quantity:1,base,variantTotal:'0',addonTotal:'0',promoReduction:'0',tax});
 test('exclusive/inclusive pricing and staged discounts preserve exact totals',()=>{
  const exclusive=calculateQuote({lines:[{...line('a','100000',{id:1n,name:'VAT',rate:'10',inclusive:false}),promoReduction:'20000'}],discounts:[{key:'d',name:'Ten',calculation:'percent',value:'10'}],charges:[{key:'c',name:'Service',calculation:'fixed',value:'12800'}]});

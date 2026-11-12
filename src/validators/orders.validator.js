@@ -1,13 +1,14 @@
 import { AppError } from '../utils/errors.js';
 import { parseId } from '../utils/ids.js';
 import { parsePage } from '../utils/pagination.js';
+import { money } from '../utils/money.js';
 const invalid=()=>{throw new AppError(422,'INVALID_ORDER','Invalid order input');};
 const object=(value,fields)=>{if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(k=>!fields.includes(k)))invalid();};
 const text=(value,max)=>{if(value!==undefined&&value!==null&&(typeof value!=='string'||[...value].length>max))invalid();return value??null;};
 export function orderInput(kind){return(req,res,next)=>{
  if(req.params.id!==undefined)req.entityId=parseId(req.params.id);
- if(['list','active','detail'].includes(kind)){
-  const q=req.query,fields=kind==='detail'?[]:['page','limit','sort_by','sort_order',...(kind==='list'?['status','payment_status','order_type','is_held','from','to','search']:[])];
+ if(['list','active','detail','history'].includes(kind)){
+  const q=req.query,fields=['detail','history'].includes(kind)?[]:['page','limit','sort_by','sort_order',...(kind==='list'?['status','payment_status','order_type','is_held','from','to','search']:[])];
   if(Object.keys(q).some(k=>!fields.includes(k)))invalid();
   if(q.status!==undefined&&!['pending','preparing','ready','completed','cancelled'].includes(q.status))invalid();
   if(q.payment_status!==undefined&&!['pending','paid'].includes(q.payment_status))invalid();
@@ -23,7 +24,24 @@ export function orderInput(kind){return(req,res,next)=>{
   if(input.from&&input.to&&(input.to<=input.from||input.to-input.from>366*86400000))invalid();req.input=input;return next();
  }
  if(Object.keys(req.query).length)invalid();const b=req.body;
- object(b,['order_type','notes','items','discounts',...(kind==='create'?['client_request_id']:[])]);
+ if(['edit','addItem','editItem','removeItem','hold','resume','applyDiscount','removeDiscount','status','cancel'].includes(kind)){
+  if(req.params.itemId!==undefined)req.childId=parseId(req.params.itemId);
+  if(req.params.discountId!==undefined)req.childId=parseId(req.params.discountId);
+  const fields={edit:['order_type','notes'],addItem:['product_id','quantity','variant_option_ids','addons','special_instructions'],editItem:['quantity','variant_option_ids','addons','special_instructions'],applyDiscount:['discount_id','name','calculation','value'],status:['status'],cancel:['reason']}[kind]??[];
+  object(b,fields);if(['edit','editItem'].includes(kind)&&!Object.keys(b).length)invalid();
+  if(kind==='edit'){if(b.order_type!==undefined&&!['dine_in','takeaway'].includes(b.order_type))invalid();req.input={...b};if('notes' in b)req.input.notes=text(b.notes,4000);}
+  else if(['addItem','editItem'].includes(kind)){
+   const full=kind==='addItem'?b:{product_id:'1',quantity:1,...b};
+   const fake={params:{},query:{},body:{order_type:'dine_in',items:[full]}};orderInput('quote')(fake,{},()=>{});
+   req.input=kind==='addItem'?fake.input.items[0]:Object.fromEntries(Object.keys(b).map(k=>[k,fake.input.items[0][k]]));
+  }else if(kind==='applyDiscount'){
+   if('discount_id' in b){if(Object.keys(b).length!==1)invalid();req.input={discount_id:parseId(b.discount_id)};}
+   else{if(typeof b.name!=='string'||!b.name.trim()||[...b.name].length>120||!['fixed','percent'].includes(b.calculation))invalid();const value=money(b.value);if(b.calculation==='percent'&&value.gt(100))invalid();req.input={name:b.name,calculation:b.calculation,value};}
+  }else if(kind==='status'){if(!['pending','preparing','ready','completed'].includes(b.status))invalid();req.input={status:b.status};}
+  else if(kind==='cancel'){if(typeof b.reason!=='string'||!b.reason.trim()||[...b.reason].length>500)invalid();req.input={reason:b.reason};}
+  else req.input={};return next();
+ }
+ object(b,['order_type' ,'notes','items','discounts',...(kind==='create'?['client_request_id']:[])]);
  if(!['dine_in','takeaway'].includes(b.order_type))invalid();
  if(!Array.isArray(b.items)||!b.items.length||b.items.length>100)invalid();
  const items=b.items.map(item=>{
